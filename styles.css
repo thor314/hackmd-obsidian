@@ -1,0 +1,11 @@
+.modal-button-container {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.modal-error {
+  color: red;
+  margin-top: 10px;
+}

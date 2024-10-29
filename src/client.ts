@@ -50,7 +50,7 @@ export class HackMDClient {
   private async request(endpoint: string, options: Partial<RequestUrlParam> = {}): Promise<HackMDResponse> {
     const url = `${this.baseUrl}${endpoint}`;
     try {
-      console.log('Making request to:', url);
+      // console.log('Making request to:', url);
       const response = await requestUrl({
         url,
         method: options.method || 'GET',
@@ -61,7 +61,7 @@ export class HackMDClient {
         body: options.body,
       });
 
-      console.log('Response:', response);
+      // console.log('Response:', response);
 
       // Handle special response types
       if (response.status === 204 || response.text.length === 0) {
@@ -140,7 +140,7 @@ export class HackMDClient {
    * @returns Created note data
    */
   async createNote(options: NoteOptions) {
-    console.log('Creating note with options:', options);
+    // console.log('Creating note with options:', options);
     const response = await this.request('/notes', {
       method: 'POST',
       body: JSON.stringify({
@@ -165,7 +165,7 @@ export class HackMDClient {
    * @returns Updated note data
    */
   async updateNote(noteId: string, options: NoteOptions) {
-    console.log('Updating note with options:', options);
+    // console.log('Updating note with options:', options);
     const response = await this.request(`/notes/${noteId}`, {
       method: 'PATCH',
       body: JSON.stringify(options)
@@ -195,9 +195,9 @@ export class HackMDClient {
       });
 
       if (response.status === 404) {
-        console.log(`Note ${noteId} was already deleted or doesn't exist`);
+        // console.log(`Note ${noteId} was already deleted or doesn't exist`);
       } else {
-        console.log(`Note ${noteId} successfully deleted`);
+        // console.log(`Note ${noteId} successfully deleted`);
       }
       return true;
     } catch (error) {

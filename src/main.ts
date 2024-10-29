@@ -315,11 +315,11 @@ export default class HackMDPlugin extends Plugin {
     const localModTime = file.stat.mtime;
     const remoteModTime = new Date(note.lastChangedAt || note.createdAt).getTime();
 
-    console.log('Sync check:', {
-      lastSync: new Date(lastSyncTime).toISOString(),
-      localMod: new Date(localModTime).toISOString(),
-      remoteMod: new Date(remoteModTime).toISOString()
-    });
+    // console.log('Sync check:', {
+    // lastSync: new Date(lastSyncTime).toISOString(),
+    //   localMod: new Date(localModTime).toISOString(),
+    //   remoteMod: new Date(remoteModTime).toISOString()
+    // });
 
     if (remoteModTime > lastSyncTime && remoteModTime > localModTime) {
       throw new HackMDError(
@@ -413,7 +413,7 @@ export default class HackMDPlugin extends Plugin {
    */
   private async cleanupHackMDMetadata(editor: Editor, file: TFile): Promise<void> {
     try {
-      console.log('Starting HackMD metadata cleanup for:', file.path);
+      // console.log('Starting HackMD metadata cleanup for:', file.path);
 
       // Clean up plugin settings
       delete this.settings.noteIdMap[file.path];
@@ -436,7 +436,7 @@ export default class HackMDPlugin extends Plugin {
         }
       }
 
-      console.log('Completed HackMD metadata cleanup for:', file.path);
+      // console.log('Completed HackMD metadata cleanup for:', file.path);
     } catch (error) {
       console.error('Failed to clean up HackMD metadata:', error);
       throw new Error('Failed to clean up HackMD metadata: ' + error.message);
@@ -449,25 +449,25 @@ export default class HackMDPlugin extends Plugin {
   async testSyncState(): Promise<void> {
     const file = this.app.workspace.getActiveFile();
     if (!file) {
-      console.log('No active file');
+      // console.log('No active file');
       return;
     }
 
     const view = this.app.workspace.getActiveViewOfType(MarkdownView);
     if (!view) {
-      console.log('No active markdown view');
+      // console.log('No active markdown view');
       return;
     }
 
     const content = view.editor.getValue();
     const { frontmatter } = this.getFrontmatter(content);
 
-    console.log('Current state:', {
-      file: file.path,
-      frontmatter,
-      noteId: this.settings.noteIdMap[file.path],
-      lastSync: this.settings.lastSyncTimestamps[file.path],
-      mtime: file.stat.mtime
-    });
+    // console.log('Current state:', {
+    //   file: file.path,
+    //     frontmatter,
+    //     noteId: this.settings.noteIdMap[file.path],
+    //       lastSync: this.settings.lastSyncTimestamps[file.path],
+    //         mtime: file.stat.mtime
+    // });
   }
 }  

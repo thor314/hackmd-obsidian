@@ -8,6 +8,5 @@ Commands:
 * hackmd force pull - overwrite local
 * hackmd copy url - copy the remote url
 * hackmd delete - delete the remote copy
-
 <!-- note to self: to release: -->
 <!-- gh release create 1.0.0 --title "1.0.0" --notes "initial release of hackmd obsidian plugin" -->

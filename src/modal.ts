@@ -35,10 +35,6 @@ abstract class BaseModal extends Modal {
 
     // Buttons container with styling
     buttonsContainer.addClass("modal-button-container");
-    buttonsContainer.style.display = "flex";
-    buttonsContainer.style.justifyContent = "flex-end";
-    buttonsContainer.style.gap = "10px";
-    buttonsContainer.style.marginTop = "20px";
   }
 
   /**
@@ -137,8 +133,6 @@ export class ConfirmModal extends BaseModal {
           console.error('Confirmation action failed:', error);
           // Modal stays open on error, showing the error in the UI
           const errorDiv = this.contentEl.createDiv('modal-error');
-          errorDiv.style.color = 'red';
-          errorDiv.style.marginTop = '10px';
           errorDiv.setText(error.message);
         }
       },
