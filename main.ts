@@ -1,5 +1,24 @@
 import { App, Editor, MarkdownView, Notice, Plugin, PluginSettingTab, Setting, TFile, requestUrl, RequestUrlParam } from 'obsidian';
 import { NotePermissionRole, CommentPermissionType } from '@hackmd/api/dist/type';
+import { parseYaml, stringifyYaml } from 'obsidian';
+
+interface HackMDMetadata {
+	id: string;
+	url: string;
+	title: string;
+	createdAt: string;
+	lastSync: string;
+	readPermission: NotePermissionRole;
+	writePermission: NotePermissionRole;
+	commentPermission: CommentPermissionType;
+	teamPath?: string;
+	publishLink?: string;
+}
+
+interface NoteFrontmatter {
+	hackmd?: HackMDMetadata;
+	[key: string]: any;
+}
 
 interface HackMDResponse {
 	status: number;
@@ -39,6 +58,15 @@ class HackMDClient {
 
 			console.log('Response:', response);
 
+			// Handle 202 Accepted response specially
+			if (response.status === 202) {
+				return {
+					status: response.status,
+					data: null,
+					ok: true
+				};
+			}
+
 			return {
 				status: response.status,
 				data: response.json,
@@ -56,6 +84,33 @@ class HackMDClient {
 				throw new Error(`Request failed: ${error.message}`);
 			}
 		}
+	}
+
+	async updateNote(noteId: string, options: {
+		title?: string;
+		content?: string;
+		readPermission?: NotePermissionRole;
+		writePermission?: NotePermissionRole;
+		commentPermission?: CommentPermissionType;
+	}) {
+		console.log('Updating note with options:', options);
+		const response = await this.request(`/notes/${noteId}`, {
+			method: 'PATCH',
+			body: JSON.stringify(options)
+		});
+
+		// For 202 responses, fetch the updated note data
+		if (response.status === 202) {
+			// Wait a short moment for the update to process
+			await new Promise(resolve => setTimeout(resolve, 1000));
+			const updatedNote = await this.getNote(noteId);
+			return updatedNote;
+		}
+
+		if (!response.ok) {
+			throw new Error(`Failed to update note: ${response.status}`);
+		}
+		return response.data;
 	}
 
 	async getMe() {
@@ -95,25 +150,6 @@ class HackMDClient {
 
 		if (!response.ok) {
 			throw new Error(`Failed to create note: ${response.status}`);
-		}
-		return response.data;
-	}
-
-	async updateNote(noteId: string, options: {
-		title?: string;
-		content?: string;
-		readPermission?: NotePermissionRole;
-		writePermission?: NotePermissionRole;
-		commentPermission?: CommentPermissionType;
-	}) {
-		console.log('Updating note with options:', options);
-		const response = await this.request(`/notes/${noteId}`, {
-			method: 'PATCH',
-			body: JSON.stringify(options)
-		});
-
-		if (!response.ok) {
-			throw new Error(`Failed to update note: ${response.status}`);
 		}
 		return response.data;
 	}
@@ -238,101 +274,11 @@ export default class HackMDPlugin extends Plugin {
 			// Test the connection
 			const user = await this.client.getMe();
 			console.log('Connected as:', user);
-			new Notice('Successfully connected to HackMD!');
+			// new Notice('Successfully connected to HackMD!'); // debugging
 		} catch (error) {
 			console.error('Failed to initialize HackMD client:', error);
 			new Notice('Failed to connect to HackMD. Please check your access token.');
 			this.client = null;
-		}
-	}
-
-
-	private async pushToHackMD(editor: Editor, file: TFile, force: boolean) {
-		if (!this.client) {
-			new Notice('HackMD client not initialized');
-			return;
-		}
-
-		try {
-			const content = editor.getValue();
-			const noteId = this.settings.noteIdMap[file.path];
-
-			if (!force && noteId) {
-				try {
-					const note = await this.client.getNote(noteId);
-					const lastSync = this.settings.lastSyncTimestamps[file.path] || 0;
-
-					if (note.content !== content && Date.now() - lastSync > 0) {
-						new Notice('Remote note has been modified. Use force push to overwrite.');
-						return;
-					}
-				} catch (error) {
-					console.log('Note not found, creating new one:', error);
-					delete this.settings.noteIdMap[file.path];
-				}
-			}
-
-			if (noteId) {
-				console.log('Updating existing note:', noteId);
-				await this.client.updateNote(noteId, {
-					content: content,
-					title: file.basename
-				});
-			} else {
-				console.log('Creating new note');
-				const note = await this.client.createNote({
-					content: content,
-					title: file.basename,
-					readPermission: this.settings.defaultReadPermission,
-					writePermission: this.settings.defaultWritePermission,
-					commentPermission: this.settings.defaultCommentPermission
-				});
-
-				console.log('Created note:', note);
-				this.settings.noteIdMap[file.path] = note.id;
-				await this.saveSettings();
-			}
-
-			this.settings.lastSyncTimestamps[file.path] = Date.now();
-			await this.saveSettings();
-			new Notice('Successfully pushed to HackMD!');
-		} catch (error) {
-			console.error('Failed to push to HackMD:', error);
-			new Notice(`Failed to push to HackMD: ${error.message}`);
-		}
-	}
-
-
-	private async pullFromHackMD(editor: Editor, file: TFile, force: boolean) {
-		if (!this.client) {
-			new Notice('HackMD client not initialized');
-			return;
-		}
-
-		try {
-			const noteId = this.settings.noteIdMap[file.path];
-			if (!noteId) {
-				new Notice('This file has not been pushed to HackMD yet.');
-				return;
-			}
-
-			if (!force) {
-				const lastSync = this.settings.lastSyncTimestamps[file.path] || 0;
-				if (file.stat.mtime > lastSync) {
-					new Notice('Local file has been modified. Use force pull to overwrite.');
-					return;
-				}
-			}
-
-			const note = await this.client.getNote(noteId);
-			editor.setValue(note.content || '');
-
-			this.settings.lastSyncTimestamps[file.path] = Date.now();
-			await this.saveSettings();
-			new Notice('Successfully pulled from HackMD!');
-		} catch (error) {
-			console.error('Failed to pull from HackMD:', error);
-			new Notice(`Failed to pull from HackMD: ${error.message}`);
 		}
 	}
 
@@ -358,6 +304,185 @@ export default class HackMDPlugin extends Plugin {
 
 	async saveSettings() {
 		await this.saveData(this.settings);
+	}
+
+	private getFrontmatter(content: string): { frontmatter: NoteFrontmatter | null, content: string, position: number } {
+		const fmMatch = content.match(/^---\s*\n([\s\S]*?)\n---\s*\n/);
+		if (!fmMatch) {
+			return { frontmatter: null, content, position: 0 };
+		}
+
+		try {
+			const frontmatter = parseYaml(fmMatch[1]);
+			const position = fmMatch[0].length;
+			const remainingContent = content.slice(position);
+			return { frontmatter, content: remainingContent, position };
+		} catch (e) {
+			console.error('Failed to parse frontmatter:', e);
+			return { frontmatter: null, content, position: 0 };
+		}
+	}
+
+
+	private updateFrontmatter(originalContent: string, metadata: HackMDMetadata): string {
+		const { frontmatter, content, position } = this.getFrontmatter(originalContent);
+
+		const updatedFrontmatter: NoteFrontmatter = frontmatter || {};
+		updatedFrontmatter.hackmd = metadata;
+
+		const yamlStr = stringifyYaml(updatedFrontmatter);
+		return `---\n${yamlStr}---\n${position ? content : originalContent}`;
+	}
+
+	private async pushToHackMD(editor: Editor, file: TFile, force: boolean) {
+		if (!this.client) {
+			new Notice('HackMD client not initialized');
+			return;
+		}
+
+		try {
+			const content = editor.getValue();
+			const { frontmatter } = this.getFrontmatter(content);
+			const noteId = frontmatter?.hackmd?.id || this.settings.noteIdMap[file.path];
+
+			if (!force && noteId) {
+				try {
+					const note = await this.client.getNote(noteId);
+					const lastSyncTime = frontmatter?.hackmd?.lastSync
+						? new Date(frontmatter.hackmd.lastSync).getTime()
+						: 0;
+					const localModTime = file.stat.mtime;
+					const remoteModTime = new Date(note.lastChangedAt || note.createdAt).getTime();
+
+					console.log('Sync times:', {
+						lastSync: new Date(lastSyncTime).toISOString(),
+						localMod: new Date(localModTime).toISOString(),
+						remoteMod: new Date(remoteModTime).toISOString(),
+					});
+
+					if (remoteModTime > lastSyncTime && remoteModTime > localModTime) {
+						new Notice('Remote note has been modified more recently. Use force push to overwrite.');
+						return;
+					}
+				} catch (error) {
+					console.log('Note not found or error checking remote:', error);
+					delete this.settings.noteIdMap[file.path];
+				}
+			}
+
+			let note;
+			if (noteId) {
+				console.log('Updating existing note:', noteId);
+				note = await this.client.updateNote(noteId, {
+					content: content,
+					title: file.basename
+				});
+			} else {
+				console.log('Creating new note');
+				note = await this.client.createNote({
+					content: content,
+					title: file.basename,
+					readPermission: this.settings.defaultReadPermission,
+					writePermission: this.settings.defaultWritePermission,
+					commentPermission: this.settings.defaultCommentPermission
+				});
+			}
+
+			// If we got a response, update the metadata
+			if (note) {
+				const metadata: HackMDMetadata = {
+					id: note.id,
+					url: `https://hackmd.io/${note.id}`,
+					title: note.title || file.basename,
+					createdAt: note.createdAt || frontmatter?.hackmd?.createdAt || new Date().toISOString(),
+					lastSync: new Date().toISOString(),
+					readPermission: note.readPermission || this.settings.defaultReadPermission,
+					writePermission: note.writePermission || this.settings.defaultWritePermission,
+					commentPermission: note.commentPermission || this.settings.defaultCommentPermission,
+				};
+
+				if (note.teamPath) {
+					metadata.teamPath = note.teamPath;
+				}
+				if (note.publishLink) {
+					metadata.publishLink = note.publishLink;
+				}
+
+				const updatedContent = this.updateFrontmatter(content, metadata);
+				editor.setValue(updatedContent);
+
+				this.settings.noteIdMap[file.path] = note.id;
+				this.settings.lastSyncTimestamps[file.path] = Date.now();
+				await this.saveSettings();
+			}
+
+			new Notice('Successfully pushed to HackMD!');
+		} catch (error) {
+			console.error('Failed to push to HackMD:', error);
+			new Notice(`Failed to push to HackMD: ${error.message}`);
+		}
+	}
+
+
+	private async pullFromHackMD(editor: Editor, file: TFile, force: boolean) {
+		if (!this.client) {
+			new Notice('HackMD client not initialized');
+			return;
+		}
+
+		try {
+			const content = editor.getValue();
+			const { frontmatter } = this.getFrontmatter(content);
+			const noteId = frontmatter?.hackmd?.id || this.settings.noteIdMap[file.path];
+
+			if (!noteId) {
+				new Notice('This file has not been pushed to HackMD yet.');
+				return;
+			}
+
+			if (!force) {
+				const lastSync = frontmatter?.hackmd?.lastSync
+					? new Date(frontmatter.hackmd.lastSync).getTime()
+					: 0;
+
+				if (file.stat.mtime > lastSync) {
+					new Notice('Local file has been modified. Use force pull to overwrite.');
+					return;
+				}
+			}
+
+			const note = await this.client.getNote(noteId);
+
+			// Update frontmatter with latest HackMD metadata
+			const metadata: HackMDMetadata = {
+				id: note.id,
+				url: `https://hackmd.io/${note.id}`,
+				title: note.title || file.basename,
+				createdAt: note.createdAt || frontmatter?.hackmd?.createdAt || new Date().toISOString(),
+				lastSync: new Date().toISOString(),
+				readPermission: note.readPermission,
+				writePermission: note.writePermission,
+				commentPermission: note.commentPermission,
+			};
+
+			if (note.teamPath) {
+				metadata.teamPath = note.teamPath;
+			}
+			if (note.publishLink) {
+				metadata.publishLink = note.publishLink;
+			}
+
+			const updatedContent = this.updateFrontmatter(note.content || '', metadata);
+			editor.setValue(updatedContent);
+
+			this.settings.lastSyncTimestamps[file.path] = Date.now();
+			await this.saveSettings();
+
+			new Notice('Successfully pulled from HackMD!');
+		} catch (error) {
+			console.error('Failed to pull from HackMD:', error);
+			new Notice(`Failed to pull from HackMD: ${error.message}`);
+		}
 	}
 }
 
