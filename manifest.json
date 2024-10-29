@@ -1,10 +1,10 @@
 {
-	"id": "hackmd-obsidian",
-	"name": "Hackmd Obsidian",
+	"id": "hackmd-sync",
+	"name": "Hackmd Sync",
 	"dateReleased": "2024-10-29",
 	"version": "1.0.1",
 	"minAppVersion": "0.15.0",
-	"description": "An interface to upload notes to HackMD",
+	"description": "An interface to upload notes to and from HackMD",
 	"author": "Thor Kampefner",
 	"authorUrl": "https://github.com/thor314",
 	"isDesktopOnly": false

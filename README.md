@@ -1,4 +1,4 @@
-# Hackmd Plugin
+# HackMD Sync
 A plugin for pushing and fetching note contents between Obsidian and HackMD.
 
 Commands:
