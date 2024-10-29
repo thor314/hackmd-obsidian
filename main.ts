@@ -1,6 +1,95 @@
-import { App, Editor, MarkdownView, Notice, Plugin, PluginSettingTab, Setting, TFile } from 'obsidian';
-import HackMdAPI from '@hackmd/api';
+import { App, Editor, MarkdownView, Notice, Plugin, PluginSettingTab, Setting, TFile, requestUrl, RequestUrlParam } from 'obsidian';
 import { NotePermissionRole, CommentPermissionType } from '@hackmd/api/dist/type';
+
+interface HackMDResponse {
+	status: number;
+	json: any;
+	ok: boolean;
+}
+
+class HackMDClient {
+	private baseUrl = 'https://api.hackmd.io/v1';
+	private accessToken: string;
+
+	constructor(accessToken: string) {
+		this.accessToken = accessToken;
+	}
+
+	private async request(endpoint: string, options: Partial<RequestUrlParam> = {}): Promise<HackMDResponse> {
+		const url = `${this.baseUrl}${endpoint}`;
+		try {
+			const response = await requestUrl({
+				url,
+				method: options.method || 'GET',
+				headers: {
+					'Authorization': `Bearer ${this.accessToken}`,
+					'Content-Type': 'application/json',
+					...options.headers,
+				},
+				body: options.body,
+			});
+
+			return {
+				status: response.status,
+				json: response.json,
+				ok: response.status >= 200 && response.status < 300
+			};
+		} catch (error) {
+			console.error('HackMD request failed:', error);
+			throw error;
+		}
+	}
+
+	async getMe() {
+		const response = await this.request('/me');
+		if (!response.ok) {
+			throw new Error('Failed to get user info');
+		}
+		return response.json;
+	}
+
+	async getNote(noteId: string) {
+		const response = await this.request(`/notes/${noteId}`);
+		if (!response.ok) {
+			throw new Error('Failed to get note');
+		}
+		return response.json;
+	}
+
+	async createNote(options: {
+		title?: string;
+		content?: string;
+		readPermission?: NotePermissionRole;
+		writePermission?: NotePermissionRole;
+		commentPermission?: CommentPermissionType;
+	}) {
+		const response = await this.request('/notes', {
+			method: 'POST',
+			body: JSON.stringify(options)
+		});
+		if (!response.ok) {
+			throw new Error('Failed to create note');
+		}
+		return response.json;
+	}
+
+	async updateNote(noteId: string, options: {
+		title?: string;
+		content?: string;
+		readPermission?: NotePermissionRole;
+		writePermission?: NotePermissionRole;
+		commentPermission?: CommentPermissionType;
+	}) {
+		const response = await this.request(`/notes/${noteId}`, {
+			method: 'PATCH',
+			body: JSON.stringify(options)
+		});
+		if (!response.ok) {
+			throw new Error('Failed to update note');
+		}
+		return response.json;
+	}
+}
 
 interface HackMDPluginSettings {
 	accessToken: string;
@@ -22,7 +111,7 @@ const DEFAULT_SETTINGS: HackMDPluginSettings = {
 
 export default class HackMDPlugin extends Plugin {
 	settings: HackMDPluginSettings;
-	private client: HackMdAPI | null = null;
+	private client: HackMDClient | null = null;
 
 	async onload() {
 		await this.loadSettings();
@@ -114,13 +203,13 @@ export default class HackMDPlugin extends Plugin {
 		this.addSettingTab(new HackMDSettingTab(this.app, this));
 	}
 
-
 	async initializeClient() {
 		try {
-			this.client = new HackMdAPI(this.settings.accessToken);
+			this.client = new HackMDClient(this.settings.accessToken);
 
 			// Test the connection
-			await this.client.getMe();
+			const user = await this.client.getMe();
+			console.log('Connected as:', user);
 			new Notice('Successfully connected to HackMD!');
 		} catch (error) {
 			console.error('Failed to initialize HackMD client:', error);
@@ -255,7 +344,7 @@ class HackMDSettingTab extends PluginSettingTab {
 			.setDesc('HackMD API access token (from hackmd.io → Settings → API → Create API token)')
 			.addText(text => text
 				.setPlaceholder('Enter your HackMD access token')
-				.setValue(this.plugin.settings.accessToken)
+				.setValue(this.plugin.settings.accessToken || '')
 				.onChange(async (value) => {
 					this.plugin.settings.accessToken = value;
 					await this.plugin.saveSettings();
