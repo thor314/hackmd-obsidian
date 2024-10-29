@@ -3,7 +3,7 @@ import { NotePermissionRole, CommentPermissionType } from '@hackmd/api/dist/type
 
 interface HackMDResponse {
 	status: number;
-	json: any;
+	data: any;
 	ok: boolean;
 }
 
@@ -15,45 +15,63 @@ class HackMDClient {
 		this.accessToken = accessToken;
 	}
 
+	private getAuthHeaders() {
+		return {
+			'Authorization': `Bearer ${this.accessToken}`,
+			'Content-Type': 'application/json',
+			'Accept': 'application/json'
+		};
+	}
+
 	private async request(endpoint: string, options: Partial<RequestUrlParam> = {}): Promise<HackMDResponse> {
 		const url = `${this.baseUrl}${endpoint}`;
 		try {
+			console.log('Making request to:', url);
 			const response = await requestUrl({
 				url,
 				method: options.method || 'GET',
 				headers: {
-					'Authorization': `Bearer ${this.accessToken}`,
-					'Content-Type': 'application/json',
+					...this.getAuthHeaders(),
 					...options.headers,
 				},
 				body: options.body,
 			});
 
+			console.log('Response:', response);
+
 			return {
 				status: response.status,
-				json: response.json,
+				data: response.json,
 				ok: response.status >= 200 && response.status < 300
 			};
 		} catch (error) {
 			console.error('HackMD request failed:', error);
-			throw error;
+			if (error.status === 401) {
+				throw new Error('Authentication failed. Please check your access token.');
+			} else if (error.status === 403) {
+				throw new Error('Not authorized to perform this action.');
+			} else if (error.status === 404) {
+				throw new Error('Resource not found.');
+			} else {
+				throw new Error(`Request failed: ${error.message}`);
+			}
 		}
 	}
 
 	async getMe() {
 		const response = await this.request('/me');
 		if (!response.ok) {
-			throw new Error('Failed to get user info');
+			throw new Error(`Failed to get user info: ${response.status}`);
 		}
-		return response.json;
+		return response.data;
 	}
 
 	async getNote(noteId: string) {
 		const response = await this.request(`/notes/${noteId}`);
 		if (!response.ok) {
-			throw new Error('Failed to get note');
+			throw new Error(`Failed to get note: ${response.status}`);
 		}
-		return response.json;
+		return response.data;
 	}
 
 	async createNote(options: {
@@ -63,14 +81,22 @@ class HackMDClient {
 		writePermission?: NotePermissionRole;
 		commentPermission?: CommentPermissionType;
 	}) {
+		console.log('Creating note with options:', options);
 		const response = await this.request('/notes', {
 			method: 'POST',
-			body: JSON.stringify(options)
+			body: JSON.stringify({
+				title: options.title || 'Untitled',
+				content: options.content || '',
+				readPermission: options.readPermission,
+				writePermission: options.writePermission,
+				commentPermission: options.commentPermission,
+			})
 		});
+
 		if (!response.ok) {
-			throw new Error('Failed to create note');
+			throw new Error(`Failed to create note: ${response.status}`);
 		}
-		return response.json;
+		return response.data;
 	}
 
 	async updateNote(noteId: string, options: {
@@ -80,14 +106,16 @@ class HackMDClient {
 		writePermission?: NotePermissionRole;
 		commentPermission?: CommentPermissionType;
 	}) {
+		console.log('Updating note with options:', options);
 		const response = await this.request(`/notes/${noteId}`, {
 			method: 'PATCH',
 			body: JSON.stringify(options)
 		});
+
 		if (!response.ok) {
-			throw new Error('Failed to update note');
+			throw new Error(`Failed to update note: ${response.status}`);
 		}
-		return response.json;
+		return response.data;
 	}
 }
 
@@ -218,6 +246,7 @@ export default class HackMDPlugin extends Plugin {
 		}
 	}
 
+
 	private async pushToHackMD(editor: Editor, file: TFile, force: boolean) {
 		if (!this.client) {
 			new Notice('HackMD client not initialized');
@@ -238,23 +267,28 @@ export default class HackMDPlugin extends Plugin {
 						return;
 					}
 				} catch (error) {
+					console.log('Note not found, creating new one:', error);
 					delete this.settings.noteIdMap[file.path];
 				}
 			}
 
 			if (noteId) {
+				console.log('Updating existing note:', noteId);
 				await this.client.updateNote(noteId, {
-					content: content
-				});
-			} else {
-				const note = await this.client.createNote({
 					content: content,
-					readPermission: this.settings.defaultReadPermission,
-					writePermission: this.settings.defaultWritePermission,
-					commentPermission: this.settings.defaultCommentPermission,
 					title: file.basename
 				});
+			} else {
+				console.log('Creating new note');
+				const note = await this.client.createNote({
+					content: content,
+					title: file.basename,
+					readPermission: this.settings.defaultReadPermission,
+					writePermission: this.settings.defaultWritePermission,
+					commentPermission: this.settings.defaultCommentPermission
+				});
 
+				console.log('Created note:', note);
 				this.settings.noteIdMap[file.path] = note.id;
 				await this.saveSettings();
 			}
@@ -267,6 +301,7 @@ export default class HackMDPlugin extends Plugin {
 			new Notice(`Failed to push to HackMD: ${error.message}`);
 		}
 	}
+
 
 	private async pullFromHackMD(editor: Editor, file: TFile, force: boolean) {
 		if (!this.client) {
