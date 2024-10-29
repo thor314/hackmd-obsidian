@@ -225,7 +225,7 @@ export default class HackMDPlugin extends Plugin {
 					return;
 				}
 				if (view.file) {
-					await this.pushToHackMD(editor, view.file, true);
+					await this.forcePushToHackMD(editor, view.file);
 				} else {
 					new Notice('No active file to push');
 				}
@@ -241,7 +241,7 @@ export default class HackMDPlugin extends Plugin {
 					return;
 				}
 				if (view.file) {
-					await this.pullFromHackMD(editor, view.file, true);
+					await this.forcePullFromHackMD(editor, view.file);
 				} else {
 					new Notice('No active file to pull');
 				}
@@ -431,8 +431,8 @@ export default class HackMDPlugin extends Plugin {
 		}
 
 		try {
-			const content = editor.getValue();
-			const { frontmatter } = this.getFrontmatter(content);
+			const originalContent = editor.getValue();
+			const { frontmatter, content: contentWithoutFrontmatter } = this.getFrontmatter(originalContent);
 			const noteId = frontmatter?.hackmd?.id || this.settings.noteIdMap[file.path];
 
 			if (!noteId) {
@@ -440,20 +440,42 @@ export default class HackMDPlugin extends Plugin {
 				return;
 			}
 
-			if (!force) {
-				const lastSync = frontmatter?.hackmd?.lastSync
-					? new Date(frontmatter.hackmd.lastSync).getTime()
-					: 0;
+			const note = await this.client.getNote(noteId);
 
-				if (file.stat.mtime > lastSync) {
-					new Notice('Local file has been modified. Use force pull to overwrite.');
+			// Strip frontmatter from remote content for comparison
+			const { content: remoteContentWithoutFrontmatter } = this.getFrontmatter(note.content || '');
+
+			// Get timestamps
+			const lastSyncTime = frontmatter?.hackmd?.lastSync
+				? new Date(frontmatter.hackmd.lastSync).getTime()
+				: 0;
+			const localModTime = file.stat.mtime;
+			const remoteModTime = new Date(note.lastChangedAt || note.createdAt).getTime();
+
+			console.log('Pull sync comparison:', {
+				lastSync: new Date(lastSyncTime).toISOString(),
+				localMod: new Date(localModTime).toISOString(),
+				remoteMod: new Date(remoteModTime).toISOString(),
+				contentChanged: contentWithoutFrontmatter !== remoteContentWithoutFrontmatter
+			});
+
+			if (!force) {
+				// If remote hasn't changed since last sync and content is the same
+				if (remoteModTime <= lastSyncTime && contentWithoutFrontmatter === remoteContentWithoutFrontmatter) {
+					new Notice('Remote file has not changed since last sync.');
+					return;
+				}
+
+				// If content is different and local was modified after last sync
+				if (contentWithoutFrontmatter !== remoteContentWithoutFrontmatter &&
+					localModTime > lastSyncTime &&
+					localModTime > remoteModTime) {
+					new Notice('Local content is newer than remote. Use force pull to overwrite with remote version.');
 					return;
 				}
 			}
 
-			const note = await this.client.getNote(noteId);
-
-			// Update frontmatter with latest HackMD metadata
+			// Update the content and metadata
 			const metadata: HackMDMetadata = {
 				id: note.id,
 				url: `https://hackmd.io/${note.id}`,
@@ -472,20 +494,141 @@ export default class HackMDPlugin extends Plugin {
 				metadata.publishLink = note.publishLink;
 			}
 
+			// Only update if content actually changed or force is true
+			if (force || contentWithoutFrontmatter !== remoteContentWithoutFrontmatter) {
+				const updatedContent = this.updateFrontmatter(note.content || '', metadata);
+				editor.setValue(updatedContent);
+				new Notice('Successfully pulled from HackMD!');
+			} else {
+				// Just update metadata if content hasn't changed
+				const updatedContent = this.updateFrontmatter(originalContent, metadata);
+				editor.setValue(updatedContent);
+				new Notice('Updated metadata from HackMD.');
+			}
+
+			this.settings.lastSyncTimestamps[file.path] = Date.now();
+			await this.saveSettings();
+		} catch (error) {
+			console.error('Failed to pull from HackMD:', error);
+			new Notice(`Failed to pull from HackMD: ${error.message}`);
+		}
+	}
+
+	private async forcePushToHackMD(editor: Editor, file: TFile) {
+		if (!this.client) {
+			new Notice('HackMD client not initialized');
+			return;
+		}
+
+		try {
+			const content = editor.getValue();
+			const { frontmatter } = this.getFrontmatter(content);
+			const noteId = frontmatter?.hackmd?.id || this.settings.noteIdMap[file.path];
+
+			let note;
+			if (noteId) {
+				// Update existing note without any checks
+				console.log('Force updating note:', noteId);
+				note = await this.client.updateNote(noteId, {
+					content: content,
+					title: file.basename
+				});
+			} else {
+				// If note doesn't exist, create new one
+				console.log('Creating new note (force push)');
+				note = await this.client.createNote({
+					content: content,
+					title: file.basename,
+					readPermission: this.settings.defaultReadPermission,
+					writePermission: this.settings.defaultWritePermission,
+					commentPermission: this.settings.defaultCommentPermission
+				});
+			}
+
+			// Update metadata
+			const metadata: HackMDMetadata = {
+				id: note.id,
+				url: `https://hackmd.io/${note.id}`,
+				title: note.title || file.basename,
+				createdAt: note.createdAt || frontmatter?.hackmd?.createdAt || new Date().toISOString(),
+				lastSync: new Date().toISOString(),
+				readPermission: note.readPermission || this.settings.defaultReadPermission,
+				writePermission: note.writePermission || this.settings.defaultWritePermission,
+				commentPermission: note.commentPermission || this.settings.defaultCommentPermission,
+			};
+
+			if (note.teamPath) {
+				metadata.teamPath = note.teamPath;
+			}
+			if (note.publishLink) {
+				metadata.publishLink = note.publishLink;
+			}
+
+			const updatedContent = this.updateFrontmatter(content, metadata);
+			editor.setValue(updatedContent);
+
+			this.settings.noteIdMap[file.path] = note.id;
+			this.settings.lastSyncTimestamps[file.path] = Date.now();
+			await this.saveSettings();
+
+			new Notice('Successfully force pushed to HackMD!');
+		} catch (error) {
+			console.error('Failed to force push to HackMD:', error);
+			new Notice(`Failed to force push to HackMD: ${error.message}`);
+		}
+	}
+
+	private async forcePullFromHackMD(editor: Editor, file: TFile) {
+		if (!this.client) {
+			new Notice('HackMD client not initialized');
+			return;
+		}
+
+		try {
+			const { frontmatter } = this.getFrontmatter(editor.getValue());
+			const noteId = frontmatter?.hackmd?.id || this.settings.noteIdMap[file.path];
+
+			if (!noteId) {
+				new Notice('This file has not been pushed to HackMD yet.');
+				return;
+			}
+
+			// Fetch remote note without any checks
+			const note = await this.client.getNote(noteId);
+
+			// Update metadata
+			const metadata: HackMDMetadata = {
+				id: note.id,
+				url: `https://hackmd.io/${note.id}`,
+				title: note.title || file.basename,
+				createdAt: note.createdAt || frontmatter?.hackmd?.createdAt || new Date().toISOString(),
+				lastSync: new Date().toISOString(),
+				readPermission: note.readPermission,
+				writePermission: note.writePermission,
+				commentPermission: note.commentPermission,
+			};
+
+			if (note.teamPath) {
+				metadata.teamPath = note.teamPath;
+			}
+			if (note.publishLink) {
+				metadata.publishLink = note.publishLink;
+			}
+
+			// Replace content entirely
 			const updatedContent = this.updateFrontmatter(note.content || '', metadata);
 			editor.setValue(updatedContent);
 
 			this.settings.lastSyncTimestamps[file.path] = Date.now();
 			await this.saveSettings();
 
-			new Notice('Successfully pulled from HackMD!');
+			new Notice('Successfully force pulled from HackMD!');
 		} catch (error) {
-			console.error('Failed to pull from HackMD:', error);
-			new Notice(`Failed to pull from HackMD: ${error.message}`);
+			console.error('Failed to force pull from HackMD:', error);
+			new Notice(`Failed to force pull from HackMD: ${error.message}`);
 		}
 	}
 }
-
 
 class HackMDSettingTab extends PluginSettingTab {
 	plugin: HackMDPlugin;
