@@ -1,4 +1,4 @@
-import { App, Editor, MarkdownView, Notice, Plugin, PluginSettingTab, Setting, TFile, requestUrl, RequestUrlParam } from 'obsidian';
+import { App, Editor, MarkdownView, Notice, Plugin, PluginSettingTab, Setting, TFile, requestUrl, RequestUrlParam, Modal } from 'obsidian';
 import { NotePermissionRole, CommentPermissionType } from '@hackmd/api/dist/type';
 import { parseYaml, stringifyYaml } from 'obsidian';
 
@@ -58,7 +58,16 @@ class HackMDClient {
 
 			console.log('Response:', response);
 
-			// Handle 202 Accepted response specially
+			// Handle empty responses (like from DELETE)
+			if (response.status === 204 || response.text.length === 0) {
+				return {
+					status: response.status,
+					data: null,
+					ok: true
+				};
+			}
+
+			// Handle 202 Accepted
 			if (response.status === 202) {
 				return {
 					status: response.status,
@@ -73,7 +82,22 @@ class HackMDClient {
 				ok: response.status >= 200 && response.status < 300
 			};
 		} catch (error) {
-			console.error('HackMD request failed:', error);
+			console.error('Request failed:', {
+				url,
+				method: options.method || 'GET',
+				status: error.status,
+				message: error.message
+			});
+
+			// Special handling for delete operation
+			if (options.method === 'DELETE' && error.status === 404) {
+				return {
+					status: 404,
+					data: null,
+					ok: true  // Consider 404 OK for DELETE operations
+				};
+			}
+
 			if (error.status === 401) {
 				throw new Error('Authentication failed. Please check your access token.');
 			} else if (error.status === 403) {
@@ -83,6 +107,28 @@ class HackMDClient {
 			} else {
 				throw new Error(`Request failed: ${error.message}`);
 			}
+		}
+	}
+
+	async deleteNote(noteId: string): Promise<boolean> {
+		try {
+			const response = await this.request(`/notes/${noteId}`, {
+				method: 'DELETE'
+			});
+
+			// Both successful deletion and not found are considered success
+			if (response.status === 404) {
+				console.log(`Note ${noteId} was already deleted or doesn't exist`);
+			} else {
+				console.log(`Note ${noteId} successfully deleted`);
+			}
+			return true;
+		} catch (error) {
+			// Only throw if it's not a 404 error
+			if (error.status !== 404) {
+				throw error;
+			}
+			return true;
 		}
 	}
 
@@ -172,6 +218,60 @@ const DEFAULT_SETTINGS: HackMDPluginSettings = {
 	noteIdMap: {},
 	lastSyncTimestamps: {}
 };
+
+class DeleteConfirmModal extends Modal {
+	private noteTitle: string;
+	private onConfirm: () => Promise<void>;
+
+	constructor(app: App, noteTitle: string, onConfirm: () => Promise<void>) {
+		super(app);
+		this.noteTitle = noteTitle;
+		this.onConfirm = onConfirm;
+	}
+
+	onOpen() {
+		const { contentEl } = this;
+		contentEl.createEl("h3", { text: "Delete HackMD Note" });
+		contentEl.createEl("p", {
+			text: `Are you sure you want to delete the HackMD note for "${this.noteTitle}"? ` +
+				`This will remove the note from HackMD and remove all HackMD metadata from the local file.`
+		});
+
+		const buttonContainer = contentEl.createDiv("modal-button-container");
+		buttonContainer.style.display = "flex";
+		buttonContainer.style.justifyContent = "flex-end";
+		buttonContainer.style.gap = "10px";
+		buttonContainer.style.marginTop = "20px";
+
+		const cancelButton = buttonContainer.createEl("button", { text: "Cancel" });
+		const confirmButton = buttonContainer.createEl("button", {
+			text: "Delete",
+			cls: "mod-warning"
+		});
+
+		cancelButton.addEventListener("click", () => this.close());
+		confirmButton.addEventListener("click", async () => {
+			confirmButton.setAttr('disabled', 'true');
+			cancelButton.setAttr('disabled', 'true');
+			confirmButton.setText('Deleting...');
+
+			try {
+				await this.onConfirm();
+				this.close();
+			} catch (error) {
+				confirmButton.removeAttribute('disabled');
+				cancelButton.removeAttribute('disabled');
+				confirmButton.setText('Delete');
+				// Error is already handled in deleteHackMDNote
+			}
+		});
+	}
+
+	onClose() {
+		const { contentEl } = this;
+		contentEl.empty();
+	}
+}
 
 export default class HackMDPlugin extends Plugin {
 	settings: HackMDPluginSettings;
@@ -264,6 +364,22 @@ export default class HackMDPlugin extends Plugin {
 			}
 		});
 
+		this.addCommand({
+			id: 'hackmd-delete',
+			name: 'Delete HackMD Note',
+			editorCallback: async (editor: Editor, view: MarkdownView) => {
+				if (!this.client) {
+					new Notice('Please set up HackMD authentication in settings first');
+					return;
+				}
+				if (view.file) {
+					await this.deleteHackMDNote(editor, view.file);
+				} else {
+					new Notice('No active file');
+				}
+			}
+		});
+
 		this.addSettingTab(new HackMDSettingTab(this.app, this));
 	}
 
@@ -324,14 +440,109 @@ export default class HackMDPlugin extends Plugin {
 	}
 
 
-	private updateFrontmatter(originalContent: string, metadata: HackMDMetadata): string {
+	private updateFrontmatter(originalContent: string, frontmatterUpdate: Partial<NoteFrontmatter> | HackMDMetadata): string {
 		const { frontmatter, content, position } = this.getFrontmatter(originalContent);
 
-		const updatedFrontmatter: NoteFrontmatter = frontmatter || {};
-		updatedFrontmatter.hackmd = metadata;
+		let updatedFrontmatter: NoteFrontmatter = frontmatter || {};
 
-		const yamlStr = stringifyYaml(updatedFrontmatter);
-		return `---\n${yamlStr}---\n${position ? content : originalContent}`;
+		if ('id' in frontmatterUpdate) {
+			// It's HackMD metadata, update only the hackmd field
+			updatedFrontmatter.hackmd = frontmatterUpdate as HackMDMetadata;
+		} else {
+			// It's a general frontmatter update, merge with existing
+			updatedFrontmatter = {
+				...updatedFrontmatter,
+				...frontmatterUpdate
+			};
+		}
+
+		// Remove empty objects
+		Object.keys(updatedFrontmatter).forEach(key => {
+			if (updatedFrontmatter[key] && typeof updatedFrontmatter[key] === 'object' &&
+				Object.keys(updatedFrontmatter[key]).length === 0) {
+				delete updatedFrontmatter[key];
+			}
+		});
+
+		// Only add frontmatter if there's actual content
+		if (Object.keys(updatedFrontmatter).length === 0) {
+			return position ? content : originalContent;
+		}
+
+		const yamlStr = stringifyYaml(updatedFrontmatter).trim();
+		return `---\n${yamlStr}\n---\n${position ? content : originalContent}`;
+	}
+
+	private async cleanupHackMDMetadata(editor: Editor, file: TFile) {
+		try {
+			console.log('Starting HackMD metadata cleanup for:', file.path);
+
+			// Clean up plugin settings
+			delete this.settings.noteIdMap[file.path];
+			delete this.settings.lastSyncTimestamps[file.path];
+			await this.saveSettings();
+
+			// Get current content and frontmatter
+			const content = editor.getValue();
+			const { frontmatter, content: restContent } = this.getFrontmatter(content);
+
+			if (frontmatter) {
+				// Remove only the hackmd section
+				delete frontmatter.hackmd;
+
+				// Convert remaining frontmatter back to YAML
+				const yamlStr = stringifyYaml(frontmatter).trim();
+				const updatedContent = Object.keys(frontmatter).length > 0
+					? `---\n${yamlStr}\n---\n${restContent}`
+					: restContent;
+
+				editor.setValue(updatedContent.trim());
+			}
+
+			console.log('Completed HackMD metadata cleanup for:', file.path);
+		} catch (error) {
+			console.error('Failed to clean up HackMD metadata:', error);
+			throw new Error('Failed to clean up HackMD metadata: ' + error.message);
+		}
+	}
+
+
+	private async deleteHackMDNote(editor: Editor, file: TFile) {
+		if (!this.client) {
+			new Notice('HackMD client not initialized');
+			return;
+		}
+
+		try {
+			const content = editor.getValue();
+			const { frontmatter } = this.getFrontmatter(content);
+			const noteId = frontmatter?.hackmd?.id || this.settings.noteIdMap[file.path];
+
+			if (!noteId) {
+				new Notice('This file is not linked to a HackMD note.');
+				return;
+			}
+
+			new DeleteConfirmModal(this.app, file.basename, async () => {
+				try {
+					// First delete the remote note
+					const deleted = await this.client!.deleteNote(noteId);
+
+					// Then clean up all metadata
+					if (deleted) {
+						await this.cleanupHackMDMetadata(editor, file);
+						new Notice('Successfully unlinked note from HackMD and removed all metadata!');
+					}
+				} catch (error) {
+					console.error('Failed to delete HackMD note:', error);
+					new Notice(`Failed to delete HackMD note: ${error.message}`);
+				}
+			}).open();
+
+		} catch (error) {
+			console.error('Failed to process delete command:', error);
+			new Notice(`Failed to process delete command: ${error.message}`);
+		}
 	}
 
 	private async pushToHackMD(editor: Editor, file: TFile, force: boolean) {
