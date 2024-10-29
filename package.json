@@ -1,7 +1,7 @@
 {
 	"name": "hackmd-obsidian",
 	"version": "1.0.0",
-	"description": "This is a sample plugin for Obsidian (https://obsidian.md)",
+	"description": "This is a hackmd-cli plugin for Obsidian (https://hackmd.io/@docs/hackmd-cli)",
 	"main": "main.js",
 	"scripts": {
 		"dev": "node esbuild.config.mjs",
