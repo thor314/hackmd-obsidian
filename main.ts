@@ -1,48 +1,44 @@
-// import { App, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting } from 'obsidian';
 import { App, Editor, MarkdownView, Notice, Plugin, PluginSettingTab, Setting, TFile } from 'obsidian';
-import { exec } from 'child_process';
-import { promisify } from 'util';
-
-const execAsync = promisify(exec);
-
-// Remember to rename these classes and interfaces!
+import HackMdAPI from '@hackmd/api';
+import { NotePermissionRole, CommentPermissionType } from '@hackmd/api/dist/type';
 
 interface HackMDPluginSettings {
 	accessToken: string;
-	apiEndpoint: string;
-	defaultReadPermission: 'owner' | 'signed_in' | 'guest';
-	defaultWritePermission: 'owner' | 'signed_in' | 'guest';
-	defaultCommentPermission: 'disabled' | 'forbidden' | 'owners' | 'signed_in_users' | 'everyone';
-	noteIdMap: { [path: string]: string }; // Maps local file paths to HackMD note IDs
+	defaultReadPermission: NotePermissionRole;
+	defaultWritePermission: NotePermissionRole;
+	defaultCommentPermission: CommentPermissionType;
+	noteIdMap: { [path: string]: string };
 	lastSyncTimestamps: { [path: string]: number };
 }
 
 const DEFAULT_SETTINGS: HackMDPluginSettings = {
 	accessToken: '',
-	apiEndpoint: 'https://api.hackmd.io/v1',
-	defaultReadPermission: 'owner',
-	defaultWritePermission: 'owner',
-	defaultCommentPermission: 'disabled',
+	defaultReadPermission: NotePermissionRole.OWNER,
+	defaultWritePermission: NotePermissionRole.OWNER,
+	defaultCommentPermission: CommentPermissionType.DISABLED,
 	noteIdMap: {},
 	lastSyncTimestamps: {}
-}
+};
 
 export default class HackMDPlugin extends Plugin {
 	settings: HackMDPluginSettings;
+	private client: HackMdAPI | null = null;
 
 	async onload() {
 		await this.loadSettings();
 
-		// Initialize HackMD CLI configuration if needed
-		await this.initializeHackMDConfig();
+		if (this.settings.accessToken) {
+			await this.initializeClient();
+		}
 
-
-
-		// Add commands
 		this.addCommand({
 			id: 'hackmd-push',
 			name: 'Push to HackMD',
 			editorCallback: async (editor: Editor, view: MarkdownView) => {
+				if (!this.client) {
+					new Notice('Please set up HackMD authentication in settings first');
+					return;
+				}
 				if (view.file) {
 					await this.pushToHackMD(editor, view.file, false);
 				} else {
@@ -55,6 +51,10 @@ export default class HackMDPlugin extends Plugin {
 			id: 'hackmd-pull',
 			name: 'Pull from HackMD',
 			editorCallback: async (editor: Editor, view: MarkdownView) => {
+				if (!this.client) {
+					new Notice('Please set up HackMD authentication in settings first');
+					return;
+				}
 				if (view.file) {
 					await this.pullFromHackMD(editor, view.file, false);
 				} else {
@@ -67,6 +67,10 @@ export default class HackMDPlugin extends Plugin {
 			id: 'hackmd-force-push',
 			name: 'Force Push to HackMD',
 			editorCallback: async (editor: Editor, view: MarkdownView) => {
+				if (!this.client) {
+					new Notice('Please set up HackMD authentication in settings first');
+					return;
+				}
 				if (view.file) {
 					await this.pushToHackMD(editor, view.file, true);
 				} else {
@@ -79,6 +83,10 @@ export default class HackMDPlugin extends Plugin {
 			id: 'hackmd-force-pull',
 			name: 'Force Pull from HackMD',
 			editorCallback: async (editor: Editor, view: MarkdownView) => {
+				if (!this.client) {
+					new Notice('Please set up HackMD authentication in settings first');
+					return;
+				}
 				if (view.file) {
 					await this.pullFromHackMD(editor, view.file, true);
 				} else {
@@ -91,90 +99,74 @@ export default class HackMDPlugin extends Plugin {
 			id: 'hackmd-copy-url',
 			name: 'Copy HackMD URL',
 			editorCallback: async (editor: Editor, view: MarkdownView) => {
+				if (!this.client) {
+					new Notice('Please set up HackMD authentication in settings first');
+					return;
+				}
 				if (view.file) {
 					await this.copyHackMDUrl(view.file);
 				} else {
-					new Notice('No active file to copy URL from');
+					new Notice('No active file');
 				}
 			}
 		});
 
-		// This adds a settings tab so the user can configure various aspects of the plugin
 		this.addSettingTab(new HackMDSettingTab(this.app, this));
 	}
 
-	async loadSettings() {
-		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
-	}
 
-	async saveSettings() {
-		await this.saveData(this.settings);
-	}
-
-	async initializeHackMDConfig() {
-		if (this.settings.accessToken) {
-			// Set environment variable for HackMD CLI
-			process.env.HMD_API_ACCESS_TOKEN = this.settings.accessToken;
-			// process.env.HMD_API_ENDPOINT_URL = this.settings.apiEndpoint;
-
-			try {
-				// Verify login status
-				await this.runHackMDCommand('whoami');
-			} catch (error) {
-				new Notice('Failed to authenticate with HackMD. Please check your access token in settings.');
-				console.error('HackMD authentication error:', error);
-			}
-		}
-	}
-
-	private async runHackMDCommand(command: string): Promise<string> {
+	async initializeClient() {
 		try {
-			const { stdout } = await execAsync(`hackmd-cli ${command}`);
-			return stdout.trim();
+			this.client = new HackMdAPI(this.settings.accessToken);
+
+			// Test the connection
+			await this.client.getMe();
+			new Notice('Successfully connected to HackMD!');
 		} catch (error) {
-			console.error('HackMD CLI error:', error);
-			throw new Error(`Failed to execute HackMD command: ${error.message}`);
+			console.error('Failed to initialize HackMD client:', error);
+			new Notice('Failed to connect to HackMD. Please check your access token.');
+			this.client = null;
 		}
 	}
 
 	private async pushToHackMD(editor: Editor, file: TFile, force: boolean) {
+		if (!this.client) {
+			new Notice('HackMD client not initialized');
+			return;
+		}
+
 		try {
 			const content = editor.getValue();
 			const noteId = this.settings.noteIdMap[file.path];
 
 			if (!force && noteId) {
-				// Check if note exists and has been modified
 				try {
-					const noteContent = await this.runHackMDCommand(`export --noteId=${noteId}`);
+					const note = await this.client.getNote(noteId);
 					const lastSync = this.settings.lastSyncTimestamps[file.path] || 0;
 
-					if (noteContent !== content && Date.now() - lastSync > 0) {
+					if (note.content !== content && Date.now() - lastSync > 0) {
 						new Notice('Remote note has been modified. Use force push to overwrite.');
 						return;
 					}
 				} catch (error) {
-					// Note might have been deleted, create new one
 					delete this.settings.noteIdMap[file.path];
 				}
 			}
 
 			if (noteId) {
-				// Update existing note
-				await this.runHackMDCommand(`notes:update --noteId=${noteId} --content="${content}"`);
+				await this.client.updateNote(noteId, {
+					content: content
+				});
 			} else {
-				// Create new note
-				const result = await this.runHackMDCommand(
-					`notes:create --content="${content}" ` +
-					`--readPermission=${this.settings.defaultReadPermission} ` +
-					`--writePermission=${this.settings.defaultWritePermission} ` +
-					`--commentPermission=${this.settings.defaultCommentPermission} ` +
-					`--title="${file.basename}"`
-				);
+				const note = await this.client.createNote({
+					content: content,
+					readPermission: this.settings.defaultReadPermission,
+					writePermission: this.settings.defaultWritePermission,
+					commentPermission: this.settings.defaultCommentPermission,
+					title: file.basename
+				});
 
-				// Parse noteId from result and store it
-				// Assuming the output includes the note ID in some format
-				const newNoteId = this.parseNoteIdFromResult(result);
-				this.settings.noteIdMap[file.path] = newNoteId;
+				this.settings.noteIdMap[file.path] = note.id;
 				await this.saveSettings();
 			}
 
@@ -182,11 +174,17 @@ export default class HackMDPlugin extends Plugin {
 			await this.saveSettings();
 			new Notice('Successfully pushed to HackMD!');
 		} catch (error) {
+			console.error('Failed to push to HackMD:', error);
 			new Notice(`Failed to push to HackMD: ${error.message}`);
 		}
 	}
 
 	private async pullFromHackMD(editor: Editor, file: TFile, force: boolean) {
+		if (!this.client) {
+			new Notice('HackMD client not initialized');
+			return;
+		}
+
 		try {
 			const noteId = this.settings.noteIdMap[file.path];
 			if (!noteId) {
@@ -202,13 +200,14 @@ export default class HackMDPlugin extends Plugin {
 				}
 			}
 
-			const content = await this.runHackMDCommand(`export --noteId=${noteId}`);
-			editor.setValue(content);
+			const note = await this.client.getNote(noteId);
+			editor.setValue(note.content || '');
 
 			this.settings.lastSyncTimestamps[file.path] = Date.now();
 			await this.saveSettings();
 			new Notice('Successfully pulled from HackMD!');
 		} catch (error) {
+			console.error('Failed to pull from HackMD:', error);
 			new Notice(`Failed to pull from HackMD: ${error.message}`);
 		}
 	}
@@ -221,20 +220,20 @@ export default class HackMDPlugin extends Plugin {
 		}
 
 		try {
-			// Construct HackMD URL (adjust based on your HackMD instance)
-			const url = `https://hackmd.io/${noteId}`;
-			await navigator.clipboard.writeText(url);
+			await navigator.clipboard.writeText(`https://hackmd.io/${noteId}`);
 			new Notice('HackMD URL copied to clipboard!');
 		} catch (error) {
-			new Notice(`Failed to copy HackMD URL: ${error.message}`);
+			console.error('Failed to copy URL:', error);
+			new Notice('Failed to copy URL to clipboard');
 		}
 	}
 
-	private parseNoteIdFromResult(result: string): string {
-		// This needs to be implemented based on the actual output format of the CLI
-		// For now, this is a placeholder implementation
-		const matches = result.match(/ID\s+([^\s]+)/);
-		return matches ? matches[1] : '';
+	async loadSettings() {
+		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+	}
+
+	async saveSettings() {
+		await this.saveData(this.settings);
 	}
 }
 
@@ -253,36 +252,25 @@ class HackMDSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName('Access Token')
-			.setDesc('HackMD API access token')
+			.setDesc('HackMD API access token (from hackmd.io → Settings → API → Create API token)')
 			.addText(text => text
 				.setPlaceholder('Enter your HackMD access token')
 				.setValue(this.plugin.settings.accessToken)
 				.onChange(async (value) => {
 					this.plugin.settings.accessToken = value;
 					await this.plugin.saveSettings();
-					await this.plugin.initializeHackMDConfig();
-				}));
-
-		new Setting(containerEl)
-			.setName('API Endpoint')
-			.setDesc('HackMD API endpoint URL')
-			.addText(text => text
-				.setPlaceholder('https://api.hackmd.io/v1')
-				.setValue(this.plugin.settings.apiEndpoint)
-				.onChange(async (value) => {
-					this.plugin.settings.apiEndpoint = value;
-					await this.plugin.saveSettings();
+					await this.plugin.initializeClient();
 				}));
 
 		new Setting(containerEl)
 			.setName('Default Read Permission')
 			.setDesc('Default read permission for new notes')
 			.addDropdown(dropdown => dropdown
-				.addOption('owner', 'Owner Only')
-				.addOption('signed_in', 'Signed In Users')
-				.addOption('guest', 'Everyone')
+				.addOption(NotePermissionRole.OWNER, 'Owner Only')
+				.addOption(NotePermissionRole.SIGNED_IN, 'Signed In Users')
+				.addOption(NotePermissionRole.GUEST, 'Everyone')
 				.setValue(this.plugin.settings.defaultReadPermission)
-				.onChange(async (value: 'owner' | 'signed_in' | 'guest') => {
+				.onChange(async (value: NotePermissionRole) => {
 					this.plugin.settings.defaultReadPermission = value;
 					await this.plugin.saveSettings();
 				}));
@@ -291,11 +279,11 @@ class HackMDSettingTab extends PluginSettingTab {
 			.setName('Default Write Permission')
 			.setDesc('Default write permission for new notes')
 			.addDropdown(dropdown => dropdown
-				.addOption('owner', 'Owner Only')
-				.addOption('signed_in', 'Signed In Users')
-				.addOption('guest', 'Everyone')
+				.addOption(NotePermissionRole.OWNER, 'Owner Only')
+				.addOption(NotePermissionRole.SIGNED_IN, 'Signed In Users')
+				.addOption(NotePermissionRole.GUEST, 'Everyone')
 				.setValue(this.plugin.settings.defaultWritePermission)
-				.onChange(async (value: 'owner' | 'signed_in' | 'guest') => {
+				.onChange(async (value: NotePermissionRole) => {
 					this.plugin.settings.defaultWritePermission = value;
 					await this.plugin.saveSettings();
 				}));
@@ -304,13 +292,13 @@ class HackMDSettingTab extends PluginSettingTab {
 			.setName('Default Comment Permission')
 			.setDesc('Default comment permission for new notes')
 			.addDropdown(dropdown => dropdown
-				.addOption('disabled', 'Disabled')
-				.addOption('forbidden', 'Forbidden')
-				.addOption('owners', 'Owners Only')
-				.addOption('signed_in_users', 'Signed In Users')
-				.addOption('everyone', 'Everyone')
+				.addOption(CommentPermissionType.DISABLED, 'Disabled')
+				.addOption(CommentPermissionType.FORBIDDEN, 'Forbidden')
+				.addOption(CommentPermissionType.OWNERS, 'Owners Only')
+				.addOption(CommentPermissionType.SIGNED_IN_USERS, 'Signed In Users')
+				.addOption(CommentPermissionType.EVERYONE, 'Everyone')
 				.setValue(this.plugin.settings.defaultCommentPermission)
-				.onChange(async (value: 'disabled' | 'forbidden' | 'owners' | 'signed_in_users' | 'everyone') => {
+				.onChange(async (value: CommentPermissionType) => {
 					this.plugin.settings.defaultCommentPermission = value;
 					await this.plugin.saveSettings();
 				}));
