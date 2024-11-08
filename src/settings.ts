@@ -2,27 +2,18 @@ import { App, PluginSettingTab, Setting } from 'obsidian';
 import { NotePermissionRole, CommentPermissionType } from '@hackmd/api/dist/type';
 import type HackMDPlugin from './main';
 
-/**
- * Plugin settings interface
- */
+// Plugin settings configuration
 export interface HackMDPluginSettings {
-  /** HackMD API access token */
   accessToken: string;
-  /** Default read permission for new notes */
   defaultReadPermission: NotePermissionRole;
-  /** Default write permission for new notes */
   defaultWritePermission: NotePermissionRole;
-  /** Default comment permission for new notes */
   defaultCommentPermission: CommentPermissionType;
-  /** Map of file paths to HackMD note IDs */
+  // Map of file paths to HackMD note IDs 
   noteIdMap: Record<string, string>;
-  /** Map of file paths to last sync timestamps */
+  // Map of file paths to last sync timestapms 
   lastSyncTimestamps: Record<string, number>;
 }
 
-/**
- * Default settings values
- */
 export const DEFAULT_SETTINGS: HackMDPluginSettings = {
   accessToken: '',
   defaultReadPermission: NotePermissionRole.OWNER,
@@ -32,9 +23,6 @@ export const DEFAULT_SETTINGS: HackMDPluginSettings = {
   lastSyncTimestamps: {}
 };
 
-/**
- * Settings tab UI implementation
- */
 export class HackMDSettingTab extends PluginSettingTab {
   private readonly plugin: HackMDPlugin;
 
@@ -43,9 +31,6 @@ export class HackMDSettingTab extends PluginSettingTab {
     this.plugin = plugin;
   }
 
-  /**
-   * Creates the settings UI
-   */
   display(): void {
     const { containerEl } = this;
     containerEl.empty();
@@ -54,12 +39,9 @@ export class HackMDSettingTab extends PluginSettingTab {
     this.renderPermissionSettings();
   }
 
-  /**
-   * Renders the access token input section
-   */
   private renderAccessTokenSetting(): void {
     new Setting(this.containerEl)
-      .setName('Access Token')
+      .setName('Token')
       .setDesc('HackMD API access token (from hackmd.io → Settings → API → Create API token)')
       .addText(text => text
         .setPlaceholder('Enter your HackMD access token')
@@ -71,9 +53,6 @@ export class HackMDSettingTab extends PluginSettingTab {
         }));
   }
 
-  /**
-   * Renders the permission settings sections
-   */
   private renderPermissionSettings(): void {
     this.renderReadPermissionSetting();
     this.renderWritePermissionSetting();
@@ -82,12 +61,12 @@ export class HackMDSettingTab extends PluginSettingTab {
 
   private renderReadPermissionSetting(): void {
     new Setting(this.containerEl)
-      .setName('Default Read Permission')
-      .setDesc('Default read permission for new notes')
+      .setName('Read Permission')
+      .setDesc('Read permission for new notes')
       .addDropdown(dropdown => this.configurePermissionDropdown(
         dropdown,
         [
-          { value: NotePermissionRole.OWNER, label: 'Owner Only' },
+          { value: NotePermissionRole.OWNER, label: 'Owner' },
           { value: NotePermissionRole.SIGNED_IN, label: 'Signed In Users' },
           { value: NotePermissionRole.GUEST, label: 'Everyone' }
         ],
@@ -101,12 +80,12 @@ export class HackMDSettingTab extends PluginSettingTab {
 
   private renderWritePermissionSetting(): void {
     new Setting(this.containerEl)
-      .setName('Default Write Permission')
-      .setDesc('Default write permission for new notes')
+      .setName('Write Permission')
+      .setDesc('write permission for new notes')
       .addDropdown(dropdown => this.configurePermissionDropdown(
         dropdown,
         [
-          { value: NotePermissionRole.OWNER, label: 'Owner Only' },
+          { value: NotePermissionRole.OWNER, label: 'Owner' },
           { value: NotePermissionRole.SIGNED_IN, label: 'Signed In Users' },
           { value: NotePermissionRole.GUEST, label: 'Everyone' }
         ],
@@ -120,14 +99,14 @@ export class HackMDSettingTab extends PluginSettingTab {
 
   private renderCommentPermissionSetting(): void {
     new Setting(this.containerEl)
-      .setName('Default Comment Permission')
-      .setDesc('Default comment permission for new notes')
+      .setName('Comment Permission')
+      .setDesc('comment permission for new notes')
       .addDropdown(dropdown => this.configurePermissionDropdown(
         dropdown,
         [
           { value: CommentPermissionType.DISABLED, label: 'Disabled' },
           { value: CommentPermissionType.FORBIDDEN, label: 'Forbidden' },
-          { value: CommentPermissionType.OWNERS, label: 'Owners Only' },
+          { value: CommentPermissionType.OWNERS, label: 'Owner' },
           { value: CommentPermissionType.SIGNED_IN_USERS, label: 'Signed In Users' },
           { value: CommentPermissionType.EVERYONE, label: 'Everyone' }
         ],
@@ -139,9 +118,7 @@ export class HackMDSettingTab extends PluginSettingTab {
       ));
   }
 
-  /**
-   * Helper function to configure permission dropdown menus
-   */
+  // Configure dropdown with permissions options
   private configurePermissionDropdown<T>(
     dropdown: any,
     options: Array<{ value: T, label: string }>,
@@ -150,7 +127,6 @@ export class HackMDSettingTab extends PluginSettingTab {
   ) {
     options.forEach(({ value, label }) => {
       dropdown.addOption(value, label);
-      // dropdown.addOption(value as string, label);
     });
 
     return dropdown
@@ -159,41 +135,24 @@ export class HackMDSettingTab extends PluginSettingTab {
   }
 }
 
-/**
- * Utility functions for settings management
- */
+// Settings utility functions
 export const SettingsUtils = {
-  /**
-   * Gets the note ID for a given file path
-   */
   getNoteId(settings: HackMDPluginSettings, filePath: string): string | null {
     return settings.noteIdMap[filePath] || null;
   },
 
-  /**
-   * Gets the last sync timestamp for a given file path
-   */
   getLastSyncTime(settings: HackMDPluginSettings, filePath: string): number {
     return settings.lastSyncTimestamps[filePath] || 0;
   },
 
-  /**
-   * Updates the note ID mapping for a file path
-   */
   updateNoteIdMap(settings: HackMDPluginSettings, filePath: string, noteId: string): void {
     settings.noteIdMap[filePath] = noteId;
   },
 
-  /**
-   * Updates the last sync timestamp for a file path
-   */
   updateLastSyncTime(settings: HackMDPluginSettings, filePath: string): void {
     settings.lastSyncTimestamps[filePath] = Date.now();
   },
 
-  /**
-   * Removes all settings data for a file path
-   */
   cleanupFileSettings(settings: HackMDPluginSettings, filePath: string): void {
     delete settings.noteIdMap[filePath];
     delete settings.lastSyncTimestamps[filePath];

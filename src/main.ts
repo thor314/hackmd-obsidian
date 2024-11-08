@@ -22,14 +22,10 @@ import {
   HackMDErrorType,
 } from './types';
 
-/**
- * Main plugin class for HackMD integration
- */
 export default class HackMDPlugin extends Plugin {
   settings: HackMDPluginSettings;
   private client: HackMDClient | null = null;
 
-  // load 
   async onload() {
     await this.loadSettings();
     await this.setupClient();
@@ -37,54 +33,51 @@ export default class HackMDPlugin extends Plugin {
     this.addSettingTab(new HackMDSettingTab(this.app, this));
   }
 
-  /**
-   * Registers all plugin commands
-   */
+
   private registerCommands(): void {
     this.addCommand({
-      id: 'hackmd-push',
-      name: 'Push to HackMD',
+      id: 'push',
+      name: 'Push',
       editorCallback: this.createEditorCallback(this.pushToHackMD.bind(this))
     });
 
     this.addCommand({
-      id: 'hackmd-pull',
-      name: 'Pull from HackMD',
+      id: 'pull',
+      name: 'Pull',
       editorCallback: this.createEditorCallback(this.pullFromHackMD.bind(this))
     });
 
     this.addCommand({
-      id: 'hackmd-force-push',
-      name: 'Force Push to HackMD',
+      id: 'force-push',
+      name: 'Force Push',
       editorCallback: this.createEditorCallback(
         (editor: Editor, file: TFile) => this.pushToHackMD(editor, file, 'force')
       )
     });
 
     this.addCommand({
-      id: 'hackmd-force-pull',
-      name: 'Force Pull from HackMD',
+      id: 'force-pull',
+      name: 'Force Pull',
       editorCallback: this.createEditorCallback(
         (editor: Editor, file: TFile) => this.pullFromHackMD(editor, file, 'force')
       )
     });
 
     this.addCommand({
-      id: 'hackmd-copy-url',
-      name: 'Copy HackMD URL',
+      id: 'copy-url',
+      name: 'Copy URL',
       editorCallback: this.createEditorCallback(this.copyHackMDUrl.bind(this))
     });
 
     this.addCommand({
-      id: 'hackmd-delete',
-      name: 'Delete HackMD Note',
+      id: 'delete',
+      name: 'Delete Remote',
       editorCallback: this.createEditorCallback(this.deleteHackMDNote.bind(this))
     });
   }
 
-  /**
-   * Creates a wrapped editor callback with error handling
-   */
+
+  // Creates a wrapped editor callback with error handling
   private createEditorCallback(
     callback: (editor: Editor, file: TFile) => Promise<void>
   ) {
@@ -106,18 +99,16 @@ export default class HackMDPlugin extends Plugin {
     };
   }
 
-  /**
-   * Sets up the HackMD client
-   */
+
+  // Set up the HackMD client
   async setupClient() {
     if (this.settings.accessToken) {
       await this.initializeClient();
     }
   }
 
-  /**
-   * Initializes the HackMD client
-   */
+
+  // Initializes the HackMD client
   async initializeClient() {
     try {
       this.client = new HackMDClient(this.settings.accessToken);
@@ -129,23 +120,16 @@ export default class HackMDPlugin extends Plugin {
     }
   }
 
-  /**
-   * Loads plugin settings
-   */
   async loadSettings() {
     this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
   }
 
-  /**
-   * Saves plugin settings
-   */
   async saveSettings() {
     await this.saveData(this.settings);
   }
 
-  /**
-   * Pushes content to HackMD
-   */
+
+  // Pushes content 
   private async pushToHackMD(
     editor: Editor,
     file: TFile,
@@ -168,9 +152,8 @@ export default class HackMDPlugin extends Plugin {
     new Notice('Successfully pushed to HackMD!');
   }
 
-  /**
-   * Pulls content from HackMD
-   */
+
+  // Pulls content 
   private async pullFromHackMD(
     editor: Editor,
     file: TFile,
@@ -194,9 +177,8 @@ export default class HackMDPlugin extends Plugin {
     new Notice('Successfully pulled from HackMD!');
   }
 
-  /**
-   * Copies HackMD URL to clipboard
-   */
+
+  // Copies HackMD URL to clipboard
   private async copyHackMDUrl(editor: Editor): Promise<void> {
     const { metadata } = await this.prepareSync(editor);
     const noteId = metadata?.hackmd?.id;
@@ -209,9 +191,8 @@ export default class HackMDPlugin extends Plugin {
     new Notice('HackMD URL copied to clipboard!');
   }
 
-  /**
-   * Deletes a note from HackMD
-   */
+
+  // Deletes a note from HackMD
   private async deleteHackMDNote(editor: Editor, file: TFile): Promise<void> {
     if (!this.client) throw new Error('Client not initialized');
 
@@ -235,12 +216,10 @@ export default class HackMDPlugin extends Plugin {
     modal.open();
   }
 
-  /**
-   * Prepares a file for sync operations
-   */
+
+  // Prepares a file for sync operations
   private async prepareSync(
     editor: Editor,
-    // file: TFile
   ): Promise<{ content: string; metadata: NoteFrontmatter | null }> {
     const content = editor.getValue();
     const { frontmatter } = this.getFrontmatter(content);
@@ -248,9 +227,8 @@ export default class HackMDPlugin extends Plugin {
   }
 
 
-  /**
-   * Gets frontmatter and content from a note
-   */
+
+  // Gets frontmatter and content from a note
   private getFrontmatter(content: string): { frontmatter: NoteFrontmatter | null, content: string, position: number } {
     const fmMatch = content.match(/^---\s*\n([\s\S]*?)\n---\s*\n/);
     if (!fmMatch) {
@@ -268,9 +246,7 @@ export default class HackMDPlugin extends Plugin {
     }
   }
 
-  /**
-   * Updates frontmatter in a note
-   */
+  // Updates frontmatter in a note
   private updateFrontmatter(originalContent: string, metadata: HackMDMetadata | Partial<NoteFrontmatter>): string {
     const { frontmatter, content, position } = this.getFrontmatter(originalContent);
     let updatedFrontmatter: NoteFrontmatter = frontmatter || {};
@@ -303,10 +279,7 @@ export default class HackMDPlugin extends Plugin {
     return `---\n${yamlStr}\n---\n${position ? content : originalContent}`;
   }
 
-
-  /**
-   * Checks for sync conflicts between local and remote versions
-   */
+  // Checks for sync conflicts between local and remote versions
   private async checkSyncConflicts(file: TFile, noteId: string): Promise<void> {
     if (!this.client) throw new Error('Client not initialized');
 
@@ -314,12 +287,6 @@ export default class HackMDPlugin extends Plugin {
     const lastSyncTime = this.settings.lastSyncTimestamps[file.path] || 0;
     const localModTime = file.stat.mtime;
     const remoteModTime = new Date(note.lastChangedAt || note.createdAt).getTime();
-
-    // console.log('Sync check:', {
-    // lastSync: new Date(lastSyncTime).toISOString(),
-    //   localMod: new Date(localModTime).toISOString(),
-    //   remoteMod: new Date(remoteModTime).toISOString()
-    // });
 
     if (remoteModTime > lastSyncTime && remoteModTime > localModTime) {
       throw new HackMDError(
@@ -329,9 +296,7 @@ export default class HackMDPlugin extends Plugin {
     }
   }
 
-  /**
-   * Creates a new note on HackMD
-   */
+  // Creates a new note on HackMD
   private async createRemoteNote(file: TFile, content: string): Promise<any> {
     if (!this.client) throw new Error('Client not initialized');
 
@@ -344,9 +309,7 @@ export default class HackMDPlugin extends Plugin {
     });
   }
 
-  /**
-   * Updates an existing note on HackMD
-   */
+  // Updates an existing note on HackMD
   private async updateRemoteNote(noteId: string, file: TFile, content: string): Promise<any> {
     if (!this.client) throw new Error('Client not initialized');
 
@@ -356,9 +319,7 @@ export default class HackMDPlugin extends Plugin {
     });
   }
 
-  /**
-   * Updates local metadata after a sync operation
-   */
+  // Updates local metadata after a sync operation
   private async updateLocalMetadata(editor: Editor, file: TFile, note: any): Promise<void> {
     const metadata: HackMDMetadata = {
       id: note.id,
@@ -383,9 +344,7 @@ export default class HackMDPlugin extends Plugin {
     await this.saveSettings();
   }
 
-  /**
-   * Updates local content with remote changes
-   */
+  // Updates local content with remote changes
   private async updateLocalContent(editor: Editor, file: TFile, note: any): Promise<void> {
     const metadata: HackMDMetadata = {
       id: note.id,
@@ -408,13 +367,9 @@ export default class HackMDPlugin extends Plugin {
     await this.saveSettings();
   }
 
-  /**
-   * Cleans up HackMD metadata from a note
-   */
+  // Cleans up HackMD metadata from a note
   private async cleanupHackMDMetadata(editor: Editor, file: TFile): Promise<void> {
     try {
-      // console.log('Starting HackMD metadata cleanup for:', file.path);
-
       // Clean up plugin settings
       delete this.settings.noteIdMap[file.path];
       delete this.settings.lastSyncTimestamps[file.path];
@@ -436,38 +391,25 @@ export default class HackMDPlugin extends Plugin {
         }
       }
 
-      // console.log('Completed HackMD metadata cleanup for:', file.path);
     } catch (error) {
       console.error('Failed to clean up HackMD metadata:', error);
       throw new Error('Failed to clean up HackMD metadata: ' + error.message);
     }
   }
 
-  /**
-   * Helper method for testing sync state
-   */
+  // Helper method for testing sync state
   async testSyncState(): Promise<void> {
     const file = this.app.workspace.getActiveFile();
     if (!file) {
-      // console.log('No active file');
       return;
     }
 
     const view = this.app.workspace.getActiveViewOfType(MarkdownView);
     if (!view) {
-      // console.log('No active markdown view');
       return;
     }
 
     const content = view.editor.getValue();
     const { frontmatter } = this.getFrontmatter(content);
-
-    // console.log('Current state:', {
-    //   file: file.path,
-    //     frontmatter,
-    //     noteId: this.settings.noteIdMap[file.path],
-    //       lastSync: this.settings.lastSyncTimestamps[file.path],
-    //         mtime: file.stat.mtime
-    // });
   }
 }  

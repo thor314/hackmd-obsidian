@@ -1,7 +1,6 @@
 {
 	"id": "hackmd-sync",
 	"name": "HackMD Sync",
-	"dateReleased": "2024-10-29",
 	"version": "1.0.2",
 	"minAppVersion": "0.15.0",
 	"description": "An interface to upload notes to and from HackMD",
