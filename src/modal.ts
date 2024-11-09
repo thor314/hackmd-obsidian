@@ -149,7 +149,7 @@ export class DeleteConfirmModal extends ConfirmModal {
     super(
       app,
       {
-        title: "Delete HackMD Note",
+        title: "Delete HackMD note",
         message: `Are you sure you want to delete the HackMD note for "${noteTitle}"? ` +
           `This will remove the note from HackMD and remove all HackMD metadata from the local file.`,
         confirmText: "Delete",

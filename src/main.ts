@@ -53,7 +53,7 @@ export default class HackMDPlugin extends Plugin {
 
     this.addCommand({
       id: 'force-push',
-      name: 'Force Push',
+      name: 'Force push',
       editorCallback: this.createEditorCallback(
         (editor: Editor, file: TFile) => this.pushToHackMD(editor, file, 'force')
       )
@@ -61,7 +61,7 @@ export default class HackMDPlugin extends Plugin {
 
     this.addCommand({
       id: 'force-pull',
-      name: 'Force Pull',
+      name: 'Force pull',
       editorCallback: this.createEditorCallback(
         (editor: Editor, file: TFile) => this.pullFromHackMD(editor, file, 'force')
       )
@@ -75,7 +75,7 @@ export default class HackMDPlugin extends Plugin {
 
     this.addCommand({
       id: 'delete',
-      name: 'Delete Remote',
+      name: 'Delete remote',
       editorCallback: this.createEditorCallback(this.deleteHackMDNote.bind(this))
     });
   }
@@ -126,8 +126,9 @@ export default class HackMDPlugin extends Plugin {
 
     const { content, noteId } = await this.prepareSync(editor);
 
+    // if force push, just push the note, otherwise check for recent remote edits
     if (mode === 'normal' && noteId) {
-      await this.checkSyncConflicts(file, noteId);
+      await this.checkPushConflicts(file, noteId);
     }
 
     const result = noteId
@@ -145,7 +146,6 @@ export default class HackMDPlugin extends Plugin {
     mode: SyncMode = 'normal'
   ): Promise<void> {
     if (!this.client) throw new Error('Client not initialized');
-
     const { noteId } = await this.prepareSync(editor);
 
     if (!noteId) {
@@ -153,14 +153,13 @@ export default class HackMDPlugin extends Plugin {
     }
 
     if (mode === 'normal') {
-      await this.checkSyncConflicts(file, noteId);
+      await this.checkPullConflicts(file);
     }
 
     const note = await this.client.getNote(noteId);
     await this.updateLocalContent(editor, file, note);
     new Notice('Successfully pulled from HackMD!');
   }
-
 
   // Copies HackMD URL to clipboard
   private async copyHackMDUrl(editor: Editor): Promise<void> {
@@ -173,7 +172,6 @@ export default class HackMDPlugin extends Plugin {
     await navigator.clipboard.writeText(`https://hackmd.io/${noteId}`);
     new Notice('HackMD URL copied to clipboard!');
   }
-
 
   // Deletes a note from HackMD
   private async deleteHackMDNote(editor: Editor, file: TFile): Promise<void> {
@@ -198,7 +196,6 @@ export default class HackMDPlugin extends Plugin {
 
     modal.open();
   }
-
 
   // Prepares a file for sync operations; 
   // return the note content, metadata, and noteId
@@ -263,18 +260,33 @@ export default class HackMDPlugin extends Plugin {
     return `---\n${yamlStr}\n---\n${position ? content : originalContent}`;
   }
 
-  // Checks for sync conflicts between local and remote versions
-  private async checkSyncConflicts(file: TFile, noteId: string): Promise<void> {
+  // Errors if the remote note has been modified more recently
+  private async checkPushConflicts(file: TFile, noteId: string): Promise<void> {
     if (!this.client) throw new Error('Client not initialized');
 
     const note = await this.client.getNote(noteId);
     const lastSyncTime = this.settings.lastSyncTimestamps[file.path] || 0;
-    const localModTime = file.stat.mtime;
     const remoteModTime = new Date(note.lastChangedAt || note.createdAt).getTime();
 
-    if (remoteModTime > lastSyncTime && remoteModTime > localModTime) {
+    // If remote has changed since last sync
+    if (remoteModTime > lastSyncTime) {
       throw new HackMDError(
-        'Remote note has been modified more recently. Use force sync to overwrite.',
+        'remote note has been modified since last push. Use force sync to overwrite.',
+        HackMDErrorType.SYNC_CONFLICT
+      );
+    }
+  }
+
+  // Errors if the local note has been modified more recently
+  private async checkPullConflicts(file: TFile): Promise<void> {
+    if (!this.client) throw new Error('Client not initialized');
+    const lastSyncTime = this.settings.lastSyncTimestamps[file.path] || 0;
+    const localModTime = file.stat.mtime;
+
+    // If local has changed since last sync
+    if (localModTime > lastSyncTime) {
+      throw new HackMDError(
+        'Local note has been modified since last sync. Use force sync to overwrite.',
         HackMDErrorType.SYNC_CONFLICT
       );
     }
@@ -315,7 +327,7 @@ export default class HackMDPlugin extends Plugin {
 
 
     const content = editor.getValue();
-    const { frontmatter, content: noteContent, position } = this.getFrontmatter(content);
+    const { frontmatter, content: noteContent } = this.getFrontmatter(content);
 
     // Create new frontmatter object with hackmd namespace
     const newFrontmatter: NoteFrontmatter = {
@@ -323,7 +335,6 @@ export default class HackMDPlugin extends Plugin {
       hackmd: metadata
     };
 
-    // } const updatedContent = this.updateFrontmatter(content, metadata);
     const updatedContent = '---\n' +
       stringifyYaml(newFrontmatter) +
       '---\n' +
@@ -331,7 +342,7 @@ export default class HackMDPlugin extends Plugin {
 
     editor.setValue(updatedContent);
 
-    this.settings.noteIdMap[file.path] = getIdFromUrl(metadata.url) || '';
+    this.settings.noteIdMap[file.path] = note.id || '';
     this.settings.lastSyncTimestamps[file.path] = Date.now();
     await this.saveData(this.settings);
   }

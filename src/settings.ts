@@ -61,7 +61,7 @@ export class HackMDSettingTab extends PluginSettingTab {
 
   private renderReadPermissionSetting(): void {
     new Setting(this.containerEl)
-      .setName('Read Permission')
+      .setName('Read permission')
       .setDesc('Read permission for new notes')
       .addDropdown(dropdown => this.configurePermissionDropdown(
         dropdown,
@@ -79,7 +79,7 @@ export class HackMDSettingTab extends PluginSettingTab {
 
   private renderWritePermissionSetting(): void {
     new Setting(this.containerEl)
-      .setName('Write Permission')
+      .setName('Write permission')
       .setDesc('write permission for new notes')
       .addDropdown(dropdown => this.configurePermissionDropdown(
         dropdown,
@@ -98,7 +98,7 @@ export class HackMDSettingTab extends PluginSettingTab {
 
   private renderCommentPermissionSetting(): void {
     new Setting(this.containerEl)
-      .setName('Comment Permission')
+      .setName('Comment permission')
       .setDesc('comment permission for new notes')
       .addDropdown(dropdown => this.configurePermissionDropdown(
         dropdown,
