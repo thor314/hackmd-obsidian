@@ -1,6 +1,6 @@
 {
 	"name": "hackmd-sync",
-	"version": "1.0.2",
+	"version": "1.0.3",
 	"description": "An interface to upload notes to HackMD from Obsidian",
 	"main": "main.js",
 	"scripts": {

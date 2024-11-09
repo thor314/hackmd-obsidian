@@ -1,5 +1,6 @@
-import { requestUrl, RequestUrlParam } from 'obsidian';
+import { requestUrl } from 'obsidian';
 import { NotePermissionRole, CommentPermissionType } from '@hackmd/api/dist/type';
+import { HackMDError, HackMDErrorType } from './types';
 
 // Response type for HackMD API requests
 interface HackMDResponse {
@@ -16,7 +17,6 @@ interface NoteOptions {
   writePermission?: NotePermissionRole;
   commentPermission?: CommentPermissionType;
 }
-
 
 // Client for interacting with the HackMD API
 export class HackMDClient {
@@ -37,22 +37,26 @@ export class HackMDClient {
 
   /**
    * Makes a request to the HackMD API
+   * @param method - HTTP method
    * @param endpoint - API endpoint
-   * @param options - Request options
+   * @param data - Request body data
    * @returns Response from the API
-   * @throws Error if the request fails
    */
-  private async request(endpoint: string, options: Partial<RequestUrlParam> = {}): Promise<HackMDResponse> {
+  private async request(
+    method: string,
+    endpoint: string,
+    data?: any
+  ): Promise<HackMDResponse> {
     const url = `${this.baseUrl}${endpoint}`;
     try {
       const response = await requestUrl({
         url,
-        method: options.method || 'GET',
+        method,
         headers: {
           ...this.headers,
-          ...options.headers,
+          'Content-Type': 'application/json',
         },
-        body: options.body,
+        body: data ? JSON.stringify(data) : undefined,
       });
 
       // Handle special response types
@@ -71,13 +75,13 @@ export class HackMDClient {
     } catch (error) {
       console.error('Request failed:', {
         url,
-        method: options.method || 'GET',
+        method,
         status: error.status,
         message: error.message
       });
 
       // Special handling for delete operations
-      if (options.method === 'DELETE' && error.status === 404) {
+      if (method === 'DELETE' && error.status === 404) {
         return { status: 404, data: null, ok: true };
       }
 
@@ -85,113 +89,80 @@ export class HackMDClient {
     }
   }
 
-
-  // Converts API errors into meaningful error messages
-  private handleApiError(error: any): Error {
+  // Handle API errors with HackMDError type
+  private handleApiError(error: any): HackMDError {
     switch (error.status) {
       case 401:
-        return new Error('Authentication failed. Please check your access token.');
+        return new HackMDError(
+          'Authentication failed. Please check your access token.',
+          HackMDErrorType.AUTH_FAILED,
+          401
+        );
       case 403:
-        return new Error('Not authorized to perform this action.');
+        return new HackMDError(
+          'Not authorized to perform this action.',
+          HackMDErrorType.PERMISSION_DENIED,
+          403
+        );
       case 404:
-        return new Error('Resource not found.');
+        return new HackMDError(
+          'Resource not found.',
+          HackMDErrorType.NOT_FOUND,
+          404
+        );
       default:
-        return new Error(`Request failed: ${error.message}`);
+        return new HackMDError(
+          `Request failed: ${error.message}`,
+          HackMDErrorType.UNKNOWN,
+          error.status
+        );
     }
   }
 
-  /**
-   * Gets the current user's information
-   * @returns User information
-   */
+  // Gets the current user's information
   async getMe() {
-    const response = await this.request('/me');
-    if (!response.ok) {
-      throw new Error(`Failed to get user info: ${response.status}`);
-    }
+    const response = await this.request('GET', '/me');
     return response.data;
   }
 
-  /**
-   * Gets a note by ID
-   * @param noteId - ID of the note to retrieve
-   * @returns Note data
-   */
+  // Gets a note by ID
   async getNote(noteId: string) {
-    const response = await this.request(`/notes/${noteId}`);
-    if (!response.ok) {
-      throw new Error(`Failed to get note: ${response.status}`);
-    }
+    const response = await this.request('GET', `/notes/${noteId}`);
     return response.data;
   }
 
-  /**
-   * Creates a new note
-   * @param options - Note creation options
-   * @returns Created note data
-   */
+  // Creates a new note
   async createNote(options: NoteOptions) {
-    const response = await this.request('/notes', {
-      method: 'POST',
-      body: JSON.stringify({
-        title: options.title || 'Untitled',
-        content: options.content || '',
-        readPermission: options.readPermission,
-        writePermission: options.writePermission,
-        commentPermission: options.commentPermission,
-      })
-    });
+    const data = {
+      title: options.title || 'Untitled',
+      content: options.content || '',
+      readPermission: options.readPermission,
+      writePermission: options.writePermission,
+      commentPermission: options.commentPermission,
+    };
 
-    if (!response.ok) {
-      throw new Error(`Failed to create note: ${response.status}`);
-    }
+    const response = await this.request('POST', '/notes', data);
     return response.data;
   }
 
-  /**
-   * Updates an existing note
-   * @param noteId - ID of the note to update
-   * @param options - Update options
-   * @returns Updated note data
-   */
+  // Updates an existing note
   async updateNote(noteId: string, options: NoteOptions) {
-    const response = await this.request(`/notes/${noteId}`, {
-      method: 'PATCH',
-      body: JSON.stringify(options)
-    });
-
+    const response = await this.request('PATCH', `/notes/${noteId}`, options);
     // Handle 202 Accepted response
     if (response.status === 202) {
       await new Promise(resolve => setTimeout(resolve, 1000));
       return this.getNote(noteId);
     }
-
-    if (!response.ok) {
-      throw new Error(`Failed to update note: ${response.status}`);
-    }
     return response.data;
   }
 
-  /**
-   * Deletes a note
-   * @param noteId - ID of the note to delete
-   * @returns true if deletion was successful
-   */
+  // Deletes a note
   async deleteNote(noteId: string): Promise<boolean> {
-    try {
-      const response = await this.request(`/notes/${noteId}`, {
-        method: 'DELETE'
-      });
-
-      if (response.status === 404) {
-        console.error(`Note ${noteId} was already deleted or doesn't exist`);
-      } else {
-        console.error(`Note ${noteId} successfully deleted`);
-      }
-      return true;
-    } catch (error) {
-      if (error.status === 404) return true;
-      throw error;
+    const response = await this.request('DELETE', `/notes/${noteId}`);
+    // Both successful deletion and "already deleted" cases return true
+    if (response.status === 404) {
+      console.debug(`Note ${noteId} was already deleted or doesn't exist`);
     }
+    return true;
   }
 }
