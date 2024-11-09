@@ -48,7 +48,7 @@ export class HackMDSettingTab extends PluginSettingTab {
         .setValue(this.plugin.settings.accessToken || '')
         .onChange(async (value) => {
           this.plugin.settings.accessToken = value;
-          await this.plugin.saveSettings();
+          await this.plugin.saveData(this.plugin.settings);
           await this.plugin.initializeClient();
         }));
   }
@@ -73,7 +73,6 @@ export class HackMDSettingTab extends PluginSettingTab {
         this.plugin.settings.defaultReadPermission,
         async (value: NotePermissionRole) => {
           this.plugin.settings.defaultReadPermission = value;
-          await this.plugin.saveSettings();
         }
       ));
   }
@@ -92,7 +91,7 @@ export class HackMDSettingTab extends PluginSettingTab {
         this.plugin.settings.defaultWritePermission,
         async (value: NotePermissionRole) => {
           this.plugin.settings.defaultWritePermission = value;
-          await this.plugin.saveSettings();
+          await this.plugin.saveData(this.plugin.settings);
         }
       ));
   }
@@ -113,7 +112,7 @@ export class HackMDSettingTab extends PluginSettingTab {
         this.plugin.settings.defaultCommentPermission,
         async (value: CommentPermissionType) => {
           this.plugin.settings.defaultCommentPermission = value;
-          await this.plugin.saveSettings();
+          await this.plugin.saveData(this.plugin.settings);
         }
       ));
   }
@@ -137,6 +136,10 @@ export class HackMDSettingTab extends PluginSettingTab {
 
 // Settings utility functions
 export const SettingsUtils = {
+  getIdFromUrl(url: string): string | null {
+    const match = url.match(/hackmd\.io\/(?:@[^/]+\/)?([a-zA-Z0-9_-]+)/);
+    return match ? match[1] : null;
+  },
   getNoteId(settings: HackMDPluginSettings, filePath: string): string | null {
     return settings.noteIdMap[filePath] || null;
   },

@@ -27,8 +27,12 @@ export default class HackMDPlugin extends Plugin {
   private client: HackMDClient | null = null;
 
   async onload() {
-    await this.loadSettings();
-    await this.setupClient();
+    // load settings 
+    this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+    // initialize the HackMD client
+    if (this.settings.accessToken) {
+      await this.initializeClient();
+    }
     this.registerCommands();
     this.addSettingTab(new HackMDSettingTab(this.app, this));
   }
@@ -77,7 +81,8 @@ export default class HackMDPlugin extends Plugin {
   }
 
 
-  // Creates a wrapped editor callback with error handling
+  // Creates a wrapped editor callback with error handling.
+  // Enforce the editor and file to be passed into the callback.
   private createEditorCallback(
     callback: (editor: Editor, file: TFile) => Promise<void>
   ) {
@@ -99,15 +104,6 @@ export default class HackMDPlugin extends Plugin {
     };
   }
 
-
-  // Set up the HackMD client
-  async setupClient() {
-    if (this.settings.accessToken) {
-      await this.initializeClient();
-    }
-  }
-
-
   // Initializes the HackMD client
   async initializeClient() {
     try {
@@ -120,15 +116,6 @@ export default class HackMDPlugin extends Plugin {
     }
   }
 
-  async loadSettings() {
-    this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
-  }
-
-  async saveSettings() {
-    await this.saveData(this.settings);
-  }
-
-
   // Pushes content 
   private async pushToHackMD(
     editor: Editor,
@@ -137,8 +124,7 @@ export default class HackMDPlugin extends Plugin {
   ): Promise<void> {
     if (!this.client) throw new Error('Client not initialized');
 
-    const { content, metadata } = await this.prepareSync(editor);
-    const noteId = metadata?.hackmd?.id;
+    const { content, noteId } = await this.prepareSync(editor);
 
     if (mode === 'normal' && noteId) {
       await this.checkSyncConflicts(file, noteId);
@@ -152,7 +138,6 @@ export default class HackMDPlugin extends Plugin {
     new Notice('Successfully pushed to HackMD!');
   }
 
-
   // Pulls content 
   private async pullFromHackMD(
     editor: Editor,
@@ -161,8 +146,7 @@ export default class HackMDPlugin extends Plugin {
   ): Promise<void> {
     if (!this.client) throw new Error('Client not initialized');
 
-    const { metadata } = await this.prepareSync(editor);
-    const noteId = metadata?.hackmd?.id;
+    const { noteId } = await this.prepareSync(editor);
 
     if (!noteId) {
       throw new Error('This file has not been pushed to HackMD yet.');
@@ -180,8 +164,7 @@ export default class HackMDPlugin extends Plugin {
 
   // Copies HackMD URL to clipboard
   private async copyHackMDUrl(editor: Editor): Promise<void> {
-    const { metadata } = await this.prepareSync(editor);
-    const noteId = metadata?.hackmd?.id;
+    const { noteId } = await this.prepareSync(editor);
 
     if (!noteId) {
       throw new Error('This file has not been pushed to HackMD yet.');
@@ -197,7 +180,7 @@ export default class HackMDPlugin extends Plugin {
     if (!this.client) throw new Error('Client not initialized');
 
     const { metadata } = await this.prepareSync(editor);
-    const noteId = metadata?.hackmd?.id;
+    const noteId = metadata?.hackmd?.url ? getIdFromUrl(metadata.hackmd.url) : null;
 
     if (!noteId) {
       throw new Error('This file is not linked to a HackMD note.');
@@ -217,16 +200,17 @@ export default class HackMDPlugin extends Plugin {
   }
 
 
-  // Prepares a file for sync operations
+  // Prepares a file for sync operations; 
+  // return the note content, metadata, and noteId
   private async prepareSync(
     editor: Editor,
-  ): Promise<{ content: string; metadata: NoteFrontmatter | null }> {
+  ): Promise<{ content: string; metadata: NoteFrontmatter | null; noteId: string | null }> {
+    if (!editor) throw new Error('Editor not found');
     const content = editor.getValue();
     const { frontmatter } = this.getFrontmatter(content);
-    return { content, metadata: frontmatter };
+    const noteId = frontmatter?.hackmd?.url ? getIdFromUrl(frontmatter.hackmd.url) : null;
+    return { content, metadata: frontmatter, noteId };
   }
-
-
 
   // Gets frontmatter and content from a note
   private getFrontmatter(content: string): { frontmatter: NoteFrontmatter | null, content: string, position: number } {
@@ -322,49 +306,51 @@ export default class HackMDPlugin extends Plugin {
   // Updates local metadata after a sync operation
   private async updateLocalMetadata(editor: Editor, file: TFile, note: any): Promise<void> {
     const metadata: HackMDMetadata = {
-      id: note.id,
       url: `https://hackmd.io/${note.id}`,
       title: note.title || file.basename,
-      createdAt: note.createdAt || new Date().toISOString(),
       lastSync: new Date().toISOString(),
-      readPermission: note.readPermission || this.settings.defaultReadPermission,
-      writePermission: note.writePermission || this.settings.defaultWritePermission,
-      commentPermission: note.commentPermission || this.settings.defaultCommentPermission,
     };
 
     if (note.teamPath) metadata.teamPath = note.teamPath;
-    if (note.publishLink) metadata.publishLink = note.publishLink;
+
 
     const content = editor.getValue();
-    const updatedContent = this.updateFrontmatter(content, metadata);
+    const { frontmatter, content: noteContent, position } = this.getFrontmatter(content);
+
+    // Create new frontmatter object with hackmd namespace
+    const newFrontmatter: NoteFrontmatter = {
+      ...frontmatter,
+      hackmd: metadata
+    };
+
+    // } const updatedContent = this.updateFrontmatter(content, metadata);
+    const updatedContent = '---\n' +
+      stringifyYaml(newFrontmatter) +
+      '---\n' +
+      noteContent;
+
     editor.setValue(updatedContent);
 
-    this.settings.noteIdMap[file.path] = note.id;
+    this.settings.noteIdMap[file.path] = getIdFromUrl(metadata.url) || '';
     this.settings.lastSyncTimestamps[file.path] = Date.now();
-    await this.saveSettings();
+    await this.saveData(this.settings);
   }
 
   // Updates local content with remote changes
   private async updateLocalContent(editor: Editor, file: TFile, note: any): Promise<void> {
     const metadata: HackMDMetadata = {
-      id: note.id,
       url: `https://hackmd.io/${note.id}`,
       title: note.title || file.basename,
-      createdAt: note.createdAt || new Date().toISOString(),
       lastSync: new Date().toISOString(),
-      readPermission: note.readPermission,
-      writePermission: note.writePermission,
-      commentPermission: note.commentPermission,
     };
 
     if (note.teamPath) metadata.teamPath = note.teamPath;
-    if (note.publishLink) metadata.publishLink = note.publishLink;
 
     const updatedContent = this.updateFrontmatter(note.content || '', metadata);
     editor.setValue(updatedContent);
 
     this.settings.lastSyncTimestamps[file.path] = Date.now();
-    await this.saveSettings();
+    await this.saveData(this.settings);
   }
 
   // Cleans up HackMD metadata from a note
@@ -373,7 +359,8 @@ export default class HackMDPlugin extends Plugin {
       // Clean up plugin settings
       delete this.settings.noteIdMap[file.path];
       delete this.settings.lastSyncTimestamps[file.path];
-      await this.saveSettings();
+      await this.saveData(this.settings);
+
 
       // Clean up frontmatter
       const content = editor.getValue();
@@ -396,20 +383,10 @@ export default class HackMDPlugin extends Plugin {
       throw new Error('Failed to clean up HackMD metadata: ' + error.message);
     }
   }
+}
 
-  // Helper method for testing sync state
-  async testSyncState(): Promise<void> {
-    const file = this.app.workspace.getActiveFile();
-    if (!file) {
-      return;
-    }
+function getIdFromUrl(url: string): string | null {
+  const match = url.match(/hackmd\.io\/(?:@[^/]+\/)?([a-zA-Z0-9_-]+)/);
+  return match ? match[1] : null;
+}
 
-    const view = this.app.workspace.getActiveViewOfType(MarkdownView);
-    if (!view) {
-      return;
-    }
-
-    const content = view.editor.getValue();
-    const { frontmatter } = this.getFrontmatter(content);
-  }
-}  

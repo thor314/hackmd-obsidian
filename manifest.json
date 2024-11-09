@@ -1,7 +1,7 @@
 {
 	"id": "hackmd-sync",
 	"name": "HackMD Sync",
-	"version": "1.0.2",
+	"version": "1.0.3",
 	"minAppVersion": "0.15.0",
 	"description": "An interface to upload notes to and from HackMD",
 	"author": "Thor Kampefner",
