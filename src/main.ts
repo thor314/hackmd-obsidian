@@ -131,13 +131,33 @@ export default class HackMDPlugin extends Plugin {
       await this.checkPushConflicts(file, noteId);
     }
 
-    const result = noteId
-      ? await this.updateRemoteNote(noteId, file, content)
-      : await this.createRemoteNote(file, content);
+	if (noteId) {
+		await this.pushExistingNote(noteId, file, content, editor);
+	} else {
+		await this.pushNewNote(editor, file);
+	}
 
-    await this.updateLocalMetadata(editor, file, result);
     new Notice('Successfully pushed to HackMD!');
   }
+
+	private async pushExistingNote(noteId: string, file: TFile, content: string, editor: Editor) : Promise<void> {
+		const result = await this.updateRemoteNote(noteId, file, content);
+		await this.updateLocalMetadata(editor, file, result);
+	}
+
+	private async pushNewNote(editor: Editor, file: TFile) : Promise<void> {
+		const contentWithTitle = await this.addTitleToLocalMetadata(editor, file);
+		const result = await this.createRemoteNote(file, contentWithTitle);
+		await this.updateLocalMetadata(editor, file, result);
+		const syncInfo = await this.prepareSync(editor);
+		if (!syncInfo.noteId) {
+			throw new HackMDError(
+				'Failed to create note: No noteId after creation',
+				HackMDErrorType.SYNC_CONFLICT
+			);
+		}
+		await this.updateRemoteNote(syncInfo.noteId, file, syncInfo.content);
+	}
 
   // Pulls content 
   private async pullFromHackMD(
@@ -310,9 +330,32 @@ export default class HackMDPlugin extends Plugin {
     if (!this.client) throw new Error('Client not initialized');
 
     return await this.client.updateNote(noteId, {
-      content,
-      title: file.basename
+      content
     });
+  }
+
+// Updates local metadata before a note creation operation
+private async addTitleToLocalMetadata(editor: Editor, file: TFile): Promise<string> {
+	const content = editor.getValue();
+	const { frontmatter, content: noteContent } = this.getFrontmatter(content);
+
+	// Create new frontmatter object with title namespace
+	const newFrontmatter: NoteFrontmatter = {
+		...frontmatter,
+		title: file.basename
+	};
+
+	this.updateContent(newFrontmatter, noteContent, editor);
+	return editor.getValue();
+	}
+	
+	private updateContent(newFrontmatter: NoteFrontmatter, noteContent: string, editor: Editor) {
+		const updatedContent = '---\n' +
+			stringifyYaml(newFrontmatter) +
+			'---\n' +
+			noteContent;
+
+		editor.setValue(updatedContent);
   }
 
   // Updates local metadata after a sync operation
@@ -335,12 +378,7 @@ export default class HackMDPlugin extends Plugin {
       hackmd: metadata
     };
 
-    const updatedContent = '---\n' +
-      stringifyYaml(newFrontmatter) +
-      '---\n' +
-      noteContent;
-
-    editor.setValue(updatedContent);
+    this.updateContent(newFrontmatter, noteContent, editor);
 
     this.settings.noteIdMap[file.path] = note.id || '';
     this.settings.lastSyncTimestamps[file.path] = Date.now();

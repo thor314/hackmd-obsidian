@@ -134,7 +134,6 @@ export class HackMDClient {
   // Creates a new note
   async createNote(options: NoteOptions) {
     const data = {
-      title: options.title || 'Untitled',
       content: options.content || '',
       readPermission: options.readPermission,
       writePermission: options.writePermission,
