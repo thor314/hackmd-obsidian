@@ -1,5 +1,8 @@
 import { TFile } from 'obsidian';
-import { NotePermissionRole, CommentPermissionType } from '@hackmd/api/dist/type';
+import {
+  NotePermissionRole,
+  CommentPermissionType,
+} from '@hackmd/api/dist/type';
 
 // HackMD metadata stored in note frontmatter
 export interface HackMDMetadata {
@@ -62,11 +65,13 @@ export interface ModalConfig {
 
 // Type guards
 export function isHackMDMetadata(value: any): value is HackMDMetadata {
-  return value &&
+  return (
+    value &&
     typeof value === 'object' &&
     'url' in value &&
     'title' in value &&
-    'lastSync' in value;
+    'lastSync' in value
+  );
 }
 
 export function hasFrontmatter(content: string): boolean {
@@ -80,14 +85,18 @@ export enum HackMDErrorType {
   NETWORK_ERROR = 'network_error',
   SYNC_CONFLICT = 'sync_conflict',
   PERMISSION_DENIED = 'permission_denied',
-  UNKNOWN = 'unknown'
+  UNKNOWN = 'unknown',
 }
 
 export class HackMDError extends Error {
   public type: HackMDErrorType;
   public statusCode?: number;
 
-  constructor(message: string, type: HackMDErrorType = HackMDErrorType.UNKNOWN, statusCode?: number) {
+  constructor(
+    message: string,
+    type: HackMDErrorType = HackMDErrorType.UNKNOWN,
+    statusCode?: number
+  ) {
     super(message);
     this.type = type;
     this.statusCode = statusCode;
@@ -97,17 +106,29 @@ export class HackMDError extends Error {
   static fromApiError(error: any): HackMDError {
     switch (error.status) {
       case 401:
-        return new HackMDError('Authentication failed. Please check your access token.',
-          HackMDErrorType.AUTH_FAILED, 401);
+        return new HackMDError(
+          'Authentication failed. Please check your access token.',
+          HackMDErrorType.AUTH_FAILED,
+          401
+        );
       case 403:
-        return new HackMDError('Not authorized to perform this action.',
-          HackMDErrorType.PERMISSION_DENIED, 403);
+        return new HackMDError(
+          'Not authorized to perform this action.',
+          HackMDErrorType.PERMISSION_DENIED,
+          403
+        );
       case 404:
-        return new HackMDError('Resource not found.',
-          HackMDErrorType.NOT_FOUND, 404);
+        return new HackMDError(
+          'Resource not found.',
+          HackMDErrorType.NOT_FOUND,
+          404
+        );
       default:
-        return new HackMDError(`Request failed: ${error.message}`,
-          HackMDErrorType.UNKNOWN, error.status);
+        return new HackMDError(
+          `Request failed: ${error.message}`,
+          HackMDErrorType.UNKNOWN,
+          error.status
+        );
     }
   }
 }

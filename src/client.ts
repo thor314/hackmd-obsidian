@@ -1,5 +1,8 @@
 import { requestUrl } from 'obsidian';
-import { NotePermissionRole, CommentPermissionType } from '@hackmd/api/dist/type';
+import {
+  NotePermissionRole,
+  CommentPermissionType,
+} from '@hackmd/api/dist/type';
 import { HackMDError, HackMDErrorType } from './types';
 
 // Response type for HackMD API requests
@@ -29,7 +32,7 @@ export class HackMDClient {
    */
   constructor(accessToken: string) {
     this.headers = {
-      'Authorization': `Bearer ${accessToken}`,
+      Authorization: `Bearer ${accessToken}`,
       'Content-Type': 'application/json',
       'Accept': 'application/json'
     };
@@ -70,14 +73,14 @@ export class HackMDClient {
       return {
         status: response.status,
         data: response.json,
-        ok: response.status >= 200 && response.status < 300
+        ok: response.status >= 200 && response.status < 300,
       };
     } catch (error) {
       console.error('Request failed:', {
         url,
         method,
         status: error.status,
-        message: error.message
+        message: error.message,
       });
 
       // Special handling for delete operations
@@ -163,5 +166,10 @@ export class HackMDClient {
       console.debug(`Note ${noteId} was already deleted or doesn't exist`);
     }
     return true;
+  }
+
+  public getIdFromUrl(url: string): string | null {
+    const match = url.match(/hackmd\.io\/(?:@[^/]+\/)?([a-zA-Z0-9_-]+)/);
+    return match ? match[1] : null;
   }
 }

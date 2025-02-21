@@ -1,28 +1,31 @@
 {
-	"name": "hackmd-sync",
-	"version": "1.0.3",
-	"description": "An interface to upload notes to HackMD from Obsidian",
-	"main": "main.js",
-	"scripts": {
-		"dev": "tsc -noEmit -skipLibCheck --watch & node esbuild.config.mjs",
-		"build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
-		"version": "node version-bump.mjs && git add manifest.json versions.json"
-	},
-	"keywords": [],
-	"author": "Thor Kampefner",
-	"license": "MIT",
-	"devDependencies": {
-		"@types/node": "^16.11.6",
-		"@typescript-eslint/eslint-plugin": "5.29.0",
-		"@typescript-eslint/parser": "5.29.0",
-		"builtin-modules": "3.3.0",
-		"esbuild": "0.17.3",
-		"obsidian": "latest",
-		"tslib": "2.4.0",
-		"typescript": "4.7.4"
-	},
-	"dependencies": {
-		"@hackmd/api": "^2.4.0",
-		"node-fetch": "^3.3.2"
-	}
+    "name": "hackmd-sync",
+    "version": "1.0.3",
+    "description": "An interface to upload notes to HackMD from Obsidian",
+    "main": "main.js",
+    "scripts": {
+        "dev": "tsc -noEmit -skipLibCheck --watch & node esbuild.config.mjs",
+        "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
+        "version": "node version-bump.mjs && git add manifest.json versions.json",
+        "format": "prettier --write 'src/**/*.{ts,tsx}'",
+        "format:check": "prettier --check 'src/**/*.{ts,tsx}'"
+    },
+    "keywords": [],
+    "author": "Thor Kampefner",
+    "license": "MIT",
+    "devDependencies": {
+        "@types/node": "^16.11.6",
+        "@typescript-eslint/eslint-plugin": "5.29.0",
+        "@typescript-eslint/parser": "5.29.0",
+        "builtin-modules": "3.3.0",
+        "esbuild": "0.17.3",
+        "obsidian": "latest",
+        "prettier": "^3.5.1",
+        "tslib": "2.4.0",
+        "typescript": "4.7.4"
+    },
+    "dependencies": {
+        "@hackmd/api": "^2.4.0",
+        "node-fetch": "^3.3.2"
+    }
 }
