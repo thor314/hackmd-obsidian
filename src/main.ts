@@ -25,6 +25,7 @@ import {
 export default class HackMDPlugin extends Plugin {
   settings: HackMDPluginSettings;
   private client: HackMDClient | null = null;
+  private readonly SYNC_TIME_MARGIN = 4000; // 4 seconds in milliseconds
 
   async onload() {
     // load settings 
@@ -279,14 +280,25 @@ export default class HackMDPlugin extends Plugin {
     if (!this.client) throw new Error('Client not initialized');
 
     const note = await this.client.getNote(noteId);
-    const lastSyncTime = this.settings.lastSyncTimestamps[file.path] || 0;
+    const content = await this.app.vault.read(file);
+    const { frontmatter } = this.getFrontmatter(content);
+    const lastSyncStr = frontmatter?.lastSync;
+
+    if (!lastSyncStr) {
+        // No sync metadata yet, not safe to push
+        throw new HackMDError(
+            'Could not verify the last sync of the local note. Use Force Push to overwrite.',
+            HackMDErrorType.SYNC_CONFLICT
+        );
+    }
+
+	const lastSyncTime = new Date(lastSyncStr).getTime();
     const remoteModTime = new Date(note.lastChangedAt || note.createdAt).getTime();
 
-	const SYNC_TIME_MARGIN = 2000;
     // If remote has changed since last sync
-    if (lastSyncTime - remoteModTime > SYNC_TIME_MARGIN) {
+    if (lastSyncTime - remoteModTime > this.SYNC_TIME_MARGIN) {
       throw new HackMDError(
-        'remote note has been modified since last push. Use force sync to overwrite.',
+        'Remote note has been modified since last push. Use Force Push to overwrite.',
         HackMDErrorType.SYNC_CONFLICT
       );
     }
@@ -295,14 +307,25 @@ export default class HackMDPlugin extends Plugin {
   // Errors if the local note has been modified more recently
   private async checkPullConflicts(file: TFile): Promise<void> {
     if (!this.client) throw new Error('Client not initialized');
-    const lastSyncTime = this.settings.lastSyncTimestamps[file.path] || 0;
+    
+    const content = await this.app.vault.read(file);
+    const { frontmatter } = this.getFrontmatter(content);
+    const lastSyncStr = frontmatter?.lastSync;
+    
+    if (!lastSyncStr) {
+        // No sync metadata yet, not safe to pull
+        throw new HackMDError(
+            'Could not verify the last sync of the local note. Use force Pull to overwrite.',
+            HackMDErrorType.SYNC_CONFLICT
+        );
+    }
+
+    const lastSyncTime = new Date(lastSyncStr).getTime();
     const localModTime = file.stat.mtime;
 
-	const SYNC_TIME_MARGIN = 2000;
-    // If local has changed since last sync
-    if (lastSyncTime - localModTime > SYNC_TIME_MARGIN) {
+    if (localModTime - lastSyncTime > this.SYNC_TIME_MARGIN) {
       throw new HackMDError(
-        'Local note has been modified since last sync. Use force sync to overwrite.',
+            'Local note has been modified since last sync. Use Force Pull to overwrite.',
         HackMDErrorType.SYNC_CONFLICT
       );
     }
@@ -377,7 +400,6 @@ private async addTitleToLocalMetadata(editor: Editor, file: TFile): Promise<stri
     this.updateContent(newFrontmatter, noteContent, editor);
 
     this.settings.noteIdMap[file.path] = note.id || '';
-    this.settings.lastSyncTimestamps[file.path] = Date.now();
     await this.saveData(this.settings);
   }
 
@@ -393,8 +415,6 @@ private async addTitleToLocalMetadata(editor: Editor, file: TFile): Promise<stri
 
     const updatedContent = this.updateFrontmatter(note.content || '', metadata);
     editor.setValue(updatedContent);
-
-    this.settings.lastSyncTimestamps[file.path] = Date.now();
     await this.saveData(this.settings);
   }
 
@@ -403,7 +423,6 @@ private async addTitleToLocalMetadata(editor: Editor, file: TFile): Promise<stri
     try {
       // Clean up plugin settings
       delete this.settings.noteIdMap[file.path];
-      delete this.settings.lastSyncTimestamps[file.path];
       await this.saveData(this.settings);
 
 

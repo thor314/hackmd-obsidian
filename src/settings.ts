@@ -10,8 +10,6 @@ export interface HackMDPluginSettings {
   defaultCommentPermission: CommentPermissionType;
   // Map of file paths to HackMD note IDs 
   noteIdMap: Record<string, string>;
-  // Map of file paths to last sync timestapms 
-  lastSyncTimestamps: Record<string, number>;
 }
 
 export const DEFAULT_SETTINGS: HackMDPluginSettings = {
@@ -19,8 +17,7 @@ export const DEFAULT_SETTINGS: HackMDPluginSettings = {
   defaultReadPermission: NotePermissionRole.OWNER,
   defaultWritePermission: NotePermissionRole.OWNER,
   defaultCommentPermission: CommentPermissionType.DISABLED,
-  noteIdMap: {},
-  lastSyncTimestamps: {}
+  noteIdMap: {}
 };
 
 export class HackMDSettingTab extends PluginSettingTab {
@@ -144,20 +141,11 @@ export const SettingsUtils = {
     return settings.noteIdMap[filePath] || null;
   },
 
-  getLastSyncTime(settings: HackMDPluginSettings, filePath: string): number {
-    return settings.lastSyncTimestamps[filePath] || 0;
-  },
-
   updateNoteIdMap(settings: HackMDPluginSettings, filePath: string, noteId: string): void {
     settings.noteIdMap[filePath] = noteId;
   },
 
-  updateLastSyncTime(settings: HackMDPluginSettings, filePath: string): void {
-    settings.lastSyncTimestamps[filePath] = Date.now();
-  },
-
   cleanupFileSettings(settings: HackMDPluginSettings, filePath: string): void {
     delete settings.noteIdMap[filePath];
-    delete settings.lastSyncTimestamps[filePath];
   }
 };
