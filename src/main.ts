@@ -198,7 +198,7 @@ export default class HackMDPlugin extends Plugin {
     if (!this.client) throw new Error('Client not initialized');
 
     const { metadata } = await this.prepareSync(editor);
-    const noteId = metadata?.hackmd?.url ? getIdFromUrl(metadata.hackmd.url) : null;
+    const noteId = metadata?.url ? getIdFromUrl(metadata.url) : null;
 
     if (!noteId) {
       throw new Error('This file is not linked to a HackMD note.');
@@ -225,7 +225,7 @@ export default class HackMDPlugin extends Plugin {
     if (!editor) throw new Error('Editor not found');
     const content = editor.getValue();
     const { frontmatter } = this.getFrontmatter(content);
-    const noteId = frontmatter?.hackmd?.url ? getIdFromUrl(frontmatter.hackmd.url) : null;
+    const noteId = frontmatter?.url ? getIdFromUrl(frontmatter.url) : null;
     return { content, metadata: frontmatter, noteId };
   }
 
@@ -252,15 +252,9 @@ export default class HackMDPlugin extends Plugin {
     const { frontmatter, content, position } = this.getFrontmatter(originalContent);
     let updatedFrontmatter: NoteFrontmatter = frontmatter || {};
 
-    if ('id' in metadata) {
-      // It's HackMD metadata
-      updatedFrontmatter.hackmd = metadata as HackMDMetadata;
-    } else {
-      // It's a general frontmatter update
       updatedFrontmatter = {
         ...updatedFrontmatter,
         ...metadata
-      };
     }
 
     // Clean up empty objects
@@ -375,7 +369,7 @@ private async addTitleToLocalMetadata(editor: Editor, file: TFile): Promise<stri
     // Create new frontmatter object with hackmd namespace
     const newFrontmatter: NoteFrontmatter = {
       ...frontmatter,
-      hackmd: metadata
+      ...metadata
     };
 
     this.updateContent(newFrontmatter, noteContent, editor);
@@ -416,7 +410,9 @@ private async addTitleToLocalMetadata(editor: Editor, file: TFile): Promise<stri
       const { frontmatter, content: restContent } = this.getFrontmatter(content);
 
       if (frontmatter) {
-        delete frontmatter.hackmd;
+        delete frontmatter.url;
+		delete frontmatter.lastSync;
+		delete frontmatter.title;
 
         // Convert remaining frontmatter back to YAML
         if (Object.keys(frontmatter).length > 0) {
