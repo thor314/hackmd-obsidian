@@ -8,16 +8,13 @@ export interface HackMDPluginSettings {
   defaultReadPermission: NotePermissionRole;
   defaultWritePermission: NotePermissionRole;
   defaultCommentPermission: CommentPermissionType;
-  // Map of file paths to HackMD note IDs 
-  noteIdMap: Record<string, string>;
 }
 
 export const DEFAULT_SETTINGS: HackMDPluginSettings = {
   accessToken: '',
   defaultReadPermission: NotePermissionRole.OWNER,
   defaultWritePermission: NotePermissionRole.OWNER,
-  defaultCommentPermission: CommentPermissionType.DISABLED,
-  noteIdMap: {}
+  defaultCommentPermission: CommentPermissionType.DISABLED
 };
 
 export class HackMDSettingTab extends PluginSettingTab {
@@ -130,22 +127,3 @@ export class HackMDSettingTab extends PluginSettingTab {
       .onChange(onChange);
   }
 }
-
-// Settings utility functions
-export const SettingsUtils = {
-  getIdFromUrl(url: string): string | null {
-    const match = url.match(/hackmd\.io\/(?:@[^/]+\/)?([a-zA-Z0-9_-]+)/);
-    return match ? match[1] : null;
-  },
-  getNoteId(settings: HackMDPluginSettings, filePath: string): string | null {
-    return settings.noteIdMap[filePath] || null;
-  },
-
-  updateNoteIdMap(settings: HackMDPluginSettings, filePath: string, noteId: string): void {
-    settings.noteIdMap[filePath] = noteId;
-  },
-
-  cleanupFileSettings(settings: HackMDPluginSettings, filePath: string): void {
-    delete settings.noteIdMap[filePath];
-  }
-};

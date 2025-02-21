@@ -398,8 +398,6 @@ private async addTitleToLocalMetadata(editor: Editor, file: TFile): Promise<stri
     };
 
     this.updateContent(newFrontmatter, noteContent, editor);
-
-    this.settings.noteIdMap[file.path] = note.id || '';
     await this.saveData(this.settings);
   }
 
@@ -421,11 +419,6 @@ private async addTitleToLocalMetadata(editor: Editor, file: TFile): Promise<stri
   // Cleans up HackMD metadata from a note
   private async cleanupHackMDMetadata(editor: Editor, file: TFile): Promise<void> {
     try {
-      // Clean up plugin settings
-      delete this.settings.noteIdMap[file.path];
-      await this.saveData(this.settings);
-
-
       // Clean up frontmatter
       const content = editor.getValue();
       const { frontmatter, content: restContent } = this.getFrontmatter(content);
