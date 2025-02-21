@@ -282,8 +282,9 @@ export default class HackMDPlugin extends Plugin {
     const lastSyncTime = this.settings.lastSyncTimestamps[file.path] || 0;
     const remoteModTime = new Date(note.lastChangedAt || note.createdAt).getTime();
 
+	const SYNC_TIME_MARGIN = 2000;
     // If remote has changed since last sync
-    if (remoteModTime > lastSyncTime) {
+    if (lastSyncTime - remoteModTime > SYNC_TIME_MARGIN) {
       throw new HackMDError(
         'remote note has been modified since last push. Use force sync to overwrite.',
         HackMDErrorType.SYNC_CONFLICT
@@ -297,8 +298,9 @@ export default class HackMDPlugin extends Plugin {
     const lastSyncTime = this.settings.lastSyncTimestamps[file.path] || 0;
     const localModTime = file.stat.mtime;
 
+	const SYNC_TIME_MARGIN = 2000;
     // If local has changed since last sync
-    if (localModTime > lastSyncTime) {
+    if (lastSyncTime - localModTime > SYNC_TIME_MARGIN) {
       throw new HackMDError(
         'Local note has been modified since last sync. Use force sync to overwrite.',
         HackMDErrorType.SYNC_CONFLICT
