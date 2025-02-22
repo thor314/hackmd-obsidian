@@ -8,6 +8,5 @@
 	"bracketSpacing": true,
 	"semi": true,
 	"parser": "typescript",
-	"endOfLine": "lf",
-	"functionParameters": "multi-line"
+	"endOfLine": "lf"
 }

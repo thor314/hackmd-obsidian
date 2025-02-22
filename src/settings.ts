@@ -49,7 +49,7 @@ export class HackMDSettingTab extends PluginSettingTab {
           .onChange(async value => {
             this.plugin.settings.accessToken = value;
             await this.plugin.saveData(this.plugin.settings);
-            await this.plugin.initializeClient();
+            this.plugin.resetClient();
           })
       );
   }

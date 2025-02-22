@@ -29,9 +29,7 @@ export default class HackMDPlugin extends Plugin {
 
   async onload() {
     this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
-    if (this.settings.accessToken) {
-      await this.initializeClient();
-    }
+    this.resetClient();
     this.registerCommands();
     this.addSettingTab(new HackMDSettingTab(this.app, this));
   }
@@ -39,42 +37,36 @@ export default class HackMDPlugin extends Plugin {
   private registerCommands(): void {
     const commands = [
       {
-        id: 'push',
         name: 'Push',
         callback: this.pushToHackMD.bind(this),
       },
       {
-        id: 'pull',
         name: 'Pull',
         callback: this.pullFromHackMD.bind(this),
       },
       {
-        id: 'force-push',
-        name: 'Force push',
+        name: 'Force Push',
         callback: (editor: Editor, file: TFile) =>
           this.pushToHackMD(editor, file, 'force'),
       },
       {
-        id: 'force-pull',
-        name: 'Force pull',
+        name: 'Force Pull',
         callback: (editor: Editor, file: TFile) =>
           this.pullFromHackMD(editor, file, 'force'),
       },
       {
-        id: 'copy-url',
         name: 'Copy URL',
         callback: this.copyHackMDUrl.bind(this),
       },
       {
-        id: 'delete',
-        name: 'Delete remote',
+        name: 'Delete Remote',
         callback: this.deleteHackMDNote.bind(this),
       },
     ];
 
     for (const command of commands) {
       this.addCommand({
-        id: command.id,
+        id: command.name.toLowerCase().replace(' ', '-'),
         name: command.name,
         editorCallback: this.createEditorCallback(command.callback),
       });
@@ -97,25 +89,12 @@ export default class HackMDPlugin extends Plugin {
     };
   }
 
-  private getClient(): HackMDClient {
-    if (!this.client) {
-      throw new HackMDError(
-        'HackMD client is not initialized. Please set up authentication in settings first.',
-        HackMDErrorType.AUTH_FAILED
-      );
-    }
-    return this.client;
-  }
-
-  async initializeClient() {
+  public async resetClient(): Promise<void> {
     try {
+      if (!this.settings.accessToken) throw new Error();
       this.client = new HackMDClient(this.settings.accessToken);
       await this.client.getMe();
     } catch (error) {
-      console.error('Failed to initialize HackMD client:', error);
-      new Notice(
-        'Failed to connect to HackMD. Please check your access token.'
-      );
       throw new HackMDError(
         'Failed to initialize HackMD client. Check your access token.',
         HackMDErrorType.AUTH_FAILED
@@ -123,20 +102,26 @@ export default class HackMDPlugin extends Plugin {
     }
   }
 
+  public async getClient(): Promise<HackMDClient> {
+    if (!this.client) {
+      await this.resetClient();
+    }
+    return this.client;
+  }
+
   private async pushToHackMD(
     editor: Editor,
     file: TFile,
     mode: SyncMode = 'normal'
   ): Promise<void> {
-    const client = this.getClient();
-
+    const client = await this.getClient();
     const { content, noteId } = await this.prepareSync(editor);
-    if (mode === 'normal' && noteId) {
-      await this.checkPushConflicts(file, noteId);
-    }
-
     let result;
+
     if (noteId) {
+      if (mode === 'normal') {
+        await this.checkPushConflicts(file, noteId);
+      }
       result = await client.updateNote(noteId, { content });
     } else {
       result = await this.pushNewNote(editor, file, content);
@@ -166,7 +151,7 @@ export default class HackMDPlugin extends Plugin {
     file: TFile,
     content: string
   ): Promise<any> {
-    const client = this.getClient();
+    const client = await this.getClient();
 
     // First ensure the title is in the frontmatter
     const { frontmatter, content: noteContent } = this.getFrontmatter(content);
@@ -175,9 +160,8 @@ export default class HackMDPlugin extends Plugin {
       title: file.basename,
     };
 
-    const contentWithTitle = `---\n${stringifyYaml(newFrontmatter)}---\n${noteContent}`;
-
     // Create the note with proper title in frontmatter
+    const contentWithTitle = this.combine(newFrontmatter, noteContent);
     const result = await client.createNote({
       content: contentWithTitle,
       readPermission: this.settings.defaultReadPermission,
@@ -193,7 +177,7 @@ export default class HackMDPlugin extends Plugin {
     file: TFile,
     mode: SyncMode = 'normal'
   ): Promise<void> {
-    const client = this.getClient();
+    const client = await this.getClient();
     const { noteId } = await this.prepareSync(editor);
 
     if (!noteId) {
@@ -237,7 +221,7 @@ export default class HackMDPlugin extends Plugin {
   }
 
   private async deleteHackMDNote(editor: Editor, file: TFile): Promise<void> {
-    const client = this.getClient();
+    const client = await this.getClient();
 
     const { frontmatter } = await this.prepareSync(editor);
     const noteId = frontmatter?.url
@@ -266,7 +250,7 @@ export default class HackMDPlugin extends Plugin {
     frontmatter: NoteFrontmatter | null;
     noteId: string | null;
   }> {
-    const client = this.getClient();
+    const client = await this.getClient();
     if (!editor) throw new Error('Editor not found');
     const content = editor.getValue();
     const { frontmatter } = this.getFrontmatter(content);
@@ -298,7 +282,7 @@ export default class HackMDPlugin extends Plugin {
   }
 
   private async checkPushConflicts(file: TFile, noteId: string): Promise<void> {
-    const client = this.getClient();
+    const client = await this.getClient();
 
     const note = await client.getNote(noteId);
     const content = await this.app.vault.read(file);
@@ -307,7 +291,7 @@ export default class HackMDPlugin extends Plugin {
 
     if (!lastSyncStr) {
       throw new HackMDError(
-        'Could not verify the last sync of the local note. Use Force Push to overwrite.',
+        'Could not verify the last sync of the local note. Pull remote note or use Force Push to overwrite.',
         HackMDErrorType.SYNC_CONFLICT
       );
     }
@@ -319,7 +303,7 @@ export default class HackMDPlugin extends Plugin {
 
     if (lastSyncTime - remoteModTime > this.SYNC_TIME_MARGIN) {
       throw new HackMDError(
-        'Remote note has been modified since last push. Use Force Push to overwrite.',
+        'Remote note has been modified since last push. Pull change or use Force Push to overwrite.',
         HackMDErrorType.SYNC_CONFLICT
       );
     }
@@ -376,7 +360,7 @@ export default class HackMDPlugin extends Plugin {
 
     const updatedContent =
       Object.keys(newFrontmatter).length > 0
-        ? `---\n${stringifyYaml(newFrontmatter)}---\n${noteContent}`
+        ? this.combine(newFrontmatter, noteContent)
         : noteContent;
 
     editor.setValue(updatedContent);
@@ -397,11 +381,18 @@ export default class HackMDPlugin extends Plugin {
 
       // Only keep frontmatter if there are remaining fields
       if (Object.keys(cleanedFrontmatter).length > 0) {
-        const yamlStr = stringifyYaml(cleanedFrontmatter).trim();
-        editor.setValue(`---\n${yamlStr}\n---\n${noteContent}`);
+        const frontmatterAndContent = this.combine(
+          cleanedFrontmatter,
+          noteContent
+        );
+        editor.setValue(frontmatterAndContent);
       } else {
         editor.setValue(noteContent.trim());
       }
     }
+  }
+
+  private combine(frontmatter: NoteFrontmatter, content: string): string {
+    return `---\n${stringifyYaml(frontmatter).trim()}\n---\n${content}`;
   }
 }
