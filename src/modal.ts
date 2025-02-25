@@ -1,4 +1,4 @@
-import { App, Modal } from 'obsidian';
+import { App, Modal, TextComponent } from 'obsidian';
 
 /**
  * Base interface for modal configurations
@@ -86,11 +86,6 @@ abstract class BaseModal extends Modal {
       }
     });
   }
-
-  onClose() {
-    const { contentEl } = this;
-    contentEl.empty();
-  }
 }
 
 /**
@@ -162,6 +157,46 @@ export class DeleteConfirmModal extends ConfirmModal {
 }
 
 /**
+ * Modal for prompting the user to enter a URL
+ */
+export class UrlPromptModal extends BaseModal {
+  private onSubmit: (value: string | null) => Promise<void>;
+  private input: TextComponent;
+
+  constructor(app: App, onSubmit: (value: string | null) => Promise<void>) {
+    super(app);
+    this.onSubmit = onSubmit;
+  }
+
+  onOpen() {
+    const { contentEl } = this;
+    contentEl.createEl('h2', { text: 'Enter HackMD URL' });
+
+    // Create a container for input and button
+    const inputContainer = contentEl.createDiv({ cls: 'hackmd-url-input' });
+    inputContainer.style.display = 'flex';
+    inputContainer.style.gap = '10px';
+
+    this.input = new TextComponent(inputContainer);
+    this.input.inputEl.style.flex = '1';
+
+    const button = inputContainer.createEl('button', { text: 'Submit' });
+
+    this.input.inputEl.addEventListener('keydown', async event => {
+      if (event.key === 'Enter') {
+        await this.onSubmit(this.input.getValue());
+        this.close();
+      }
+    });
+
+    button.addEventListener('click', async () => {
+      await this.onSubmit(this.input.getValue());
+      this.close();
+    });
+  }
+}
+
+/**
  * Factory for creating common modal types
  */
 export const ModalFactory = {
@@ -195,5 +230,15 @@ export const ModalFactory = {
     onConfirm: () => Promise<void>
   ): DeleteConfirmModal {
     return new DeleteConfirmModal(app, noteTitle, onConfirm);
+  },
+
+  /**
+   * Creates a URL prompt modal
+   */
+  createUrlPromptModal(
+    app: App,
+    onSubmit: (value: string | null) => Promise<void>
+  ): UrlPromptModal {
+    return new UrlPromptModal(app, onSubmit);
   },
 };

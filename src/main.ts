@@ -6,6 +6,7 @@ import {
   TFile,
   parseYaml,
   stringifyYaml,
+  MarkdownFileInfo,
 } from 'obsidian';
 import { HackMDClient } from './client';
 import {
@@ -30,11 +31,12 @@ export default class HackMDPlugin extends Plugin {
   async onload() {
     this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
     this.resetClient();
-    this.registerCommands();
+    this.registerEditorCommands();
+    this.registerStandaloneCommands();
     this.addSettingTab(new HackMDSettingTab(this.app, this));
   }
 
-  private registerCommands(): void {
+  private registerEditorCommands(): void {
     const commands = [
       {
         name: 'Push',
@@ -66,22 +68,47 @@ export default class HackMDPlugin extends Plugin {
 
     for (const command of commands) {
       this.addCommand({
-        id: command.name.toLowerCase().replace(' ', '-'),
+        id: command.name.toLowerCase().replace(/ /g, '-'),
         name: command.name,
-        editorCallback: this.createEditorCallback(command.callback),
+        editorCallback: this.createCallback(command.callback, true),
       });
     }
   }
 
-  private createEditorCallback(
-    callback: (editor: Editor, file: TFile) => Promise<void>
+  private registerStandaloneCommands(): void {
+    this.addCommand({
+      id: 'create-note-from-hackmd-url',
+      name: 'Create Note from HackMD URL',
+      callback: () => this.promptAndCreateNote(),
+    });
+  }
+
+  private async promptAndCreateNote(): Promise<void> {
+    const url = await new Promise<string | null>(resolve => {
+      ModalFactory.createUrlPromptModal(this.app, async value => {
+        resolve(value);
+      }).open();
+    });
+
+    if (url) {
+      await this.createNoteFromHackMDUrl(url);
+    }
+  }
+
+  private createCallback<T extends (...args: any[]) => Promise<void>>(
+    callback: T,
+    requiresEditor: boolean
   ) {
-    return async (editor: Editor, view: MarkdownView) => {
+    return async (editor?: Editor, ctx?: MarkdownView | MarkdownFileInfo) => {
       try {
-        if (!view.file) {
-          throw new Error('No active file');
+        if (requiresEditor) {
+          if (!ctx || !(ctx instanceof MarkdownView) || !ctx.file) {
+            throw new Error('This command requires an active markdown file');
+          }
+          await callback(editor, ctx.file);
+        } else {
+          await callback();
         }
-        await callback(editor, view.file);
       } catch (error) {
         console.error('Command failed:', error);
         new Notice(`Operation failed: ${error.message}`);
@@ -170,6 +197,41 @@ export default class HackMDPlugin extends Plugin {
     });
 
     return result;
+  }
+
+  async createNoteFromHackMDUrl(url: string) {
+    const noteId = this.client.getIdFromUrl(url);
+    if (!noteId) {
+      new Notice('Invalid HackMD URL.');
+      return;
+    }
+
+    try {
+      const noteData = await this.client.getNote(noteId);
+      const noteTitle = noteData.title || 'Untitled';
+      const noteContent = noteData.content || '';
+
+      let fileName = `${noteTitle}.md`;
+      let filePath = this.app.vault.getAbstractFileByPath(fileName)?.path;
+      let counter = 1;
+
+      while (filePath) {
+        fileName = `${noteTitle} (${counter}).md`;
+        filePath = this.app.vault.getAbstractFileByPath(fileName)?.path;
+        counter++;
+      }
+
+      await this.app.vault.create(fileName, noteContent);
+      new Notice(`Note created: ${fileName}`);
+    } catch (error) {
+      if (error.type === 'auth_failed') {
+        new Notice('Authentication failed. Please check your access token.');
+      } else if (error.type === 'permission_denied') {
+        new Notice('Permission denied. You do not have access to this note.');
+      } else {
+        new Notice('Failed to create note from HackMD URL.');
+      }
+    }
   }
 
   private async pullFromHackMD(
