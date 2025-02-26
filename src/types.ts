@@ -14,18 +14,32 @@ export interface HackMDMetadata {
 
 // Note frontmatter structure
 export interface NoteFrontmatter {
-  hackmd?: HackMDMetadata;
   [key: string]: any;
 }
 
-// HackMD API response
-export interface HackMDResponse {
-  status: number;
-  data: any;
-  ok: boolean;
+// Response types for HackMD API - simplified to what we use
+export interface HackMDNote {
+  id: string;
+  title: string;
+  content: string;
+  createdAt: string;
+  lastChangedAt?: string;
+  teamPath?: string;
 }
 
-// Note creation/update options
+export interface HackMDUser {
+  id: string;
+  name: string;
+  userPath: string;
+}
+
+export interface HackMDResponse {
+  status: number;
+  ok: boolean;
+  data: HackMDNote | HackMDUser | null;
+}
+
+// Only the options we actually send to the API
 export interface NoteOptions {
   title?: string;
   content?: string;
@@ -40,18 +54,6 @@ export interface HackMDPluginSettings {
   defaultReadPermission: NotePermissionRole;
   defaultWritePermission: NotePermissionRole;
   defaultCommentPermission: CommentPermissionType;
-  noteIdMap: Record<string, string>;
-  lastSyncTimestamps: Record<string, number>;
-}
-
-// Sync state between local and remote notes
-export interface SyncState {
-  file: TFile;
-  localModTime: number;
-  remoteModTime: number;
-  lastSyncTime: number;
-  contentChanged: boolean;
-  metadataChanged: boolean;
 }
 
 // Modal configuration
@@ -139,13 +141,6 @@ export const CONSTANTS = {
   DEFAULT_TIMEOUT: 10000,
   MAX_RETRIES: 3,
 } as const;
-
-// Utility types
-export type AsyncResult<T> = Promise<{
-  success: boolean;
-  data?: T;
-  error?: HackMDError;
-}>;
 
 export type SyncDirection = 'push' | 'pull';
 export type SyncMode = 'normal' | 'force';

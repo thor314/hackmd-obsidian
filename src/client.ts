@@ -1,25 +1,12 @@
 import { requestUrl } from 'obsidian';
 import {
-  NotePermissionRole,
-  CommentPermissionType,
-} from '@hackmd/api/dist/type';
-import { HackMDError, HackMDErrorType } from './types';
-
-// Response type for HackMD API requests
-interface HackMDResponse {
-  status: number;
-  data: any;
-  ok: boolean;
-}
-
-// Options for creating or updating a HackMD note
-interface NoteOptions {
-  title?: string;
-  content?: string;
-  readPermission?: NotePermissionRole;
-  writePermission?: NotePermissionRole;
-  commentPermission?: CommentPermissionType;
-}
+  HackMDError,
+  HackMDErrorType,
+  HackMDNote,
+  HackMDResponse,
+  HackMDUser,
+  NoteOptions,
+} from './types';
 
 // Client for interacting with the HackMD API
 export class HackMDClient {
@@ -67,7 +54,7 @@ export class HackMDClient {
   private async request(
     method: string,
     endpoint: string,
-    data?: any
+    data?: NoteOptions
   ): Promise<HackMDResponse> {
     const url = `${this.baseUrl}${endpoint}`;
     try {
@@ -141,52 +128,78 @@ export class HackMDClient {
     }
   }
 
+  private isHackMDUser(data: unknown): data is HackMDUser {
+    return (
+      typeof data === 'object' &&
+      data !== null &&
+      'id' in data &&
+      'name' in data &&
+      'userPath' in data
+    );
+  }
+
   // Gets the current user's information
-  async getMe() {
+  async getMe(): Promise<HackMDUser> {
     const response = await this.request('GET', '/me');
-    return response.data;
+    if (!response.data || !this.isHackMDUser(response.data)) {
+      throw new HackMDError(
+        'Failed to get user information',
+        HackMDErrorType.NOT_FOUND
+      );
+    }
+    return response.data as HackMDUser;
   }
 
   // Gets a note by ID
-  async getNote(noteId: string) {
+  async getNote(noteId: string): Promise<HackMDNote> {
     const response = await this.request('GET', `/notes/${noteId}`);
-    return response.data;
+    if (!response.data) {
+      throw new HackMDError(
+        `Note ${noteId} not found`,
+        HackMDErrorType.NOT_FOUND
+      );
+    }
+    return response.data as HackMDNote;
   }
 
   // Creates a new note
-  async createNote(options: NoteOptions) {
-    const data = {
-      content: options.content || '',
-      readPermission: options.readPermission,
-      writePermission: options.writePermission,
-      commentPermission: options.commentPermission,
-    };
-
-    const response = await this.request('POST', '/notes', data);
-    return response.data;
+  async createNote(options: NoteOptions): Promise<HackMDNote> {
+    const response = await this.request('POST', '/notes', options);
+    if (!response.data) {
+      throw new HackMDError('Failed to create note', HackMDErrorType.UNKNOWN);
+    }
+    return response.data as HackMDNote;
   }
 
   // Updates an existing note
-  async updateNote(noteId: string, options: NoteOptions) {
+  async updateNote(noteId: string, options: NoteOptions): Promise<HackMDNote> {
     const response = await this.request('PATCH', `/notes/${noteId}`, options);
-    // Handle 202 Accepted response
+
     if (response.status === 202) {
       await new Promise(resolve => setTimeout(resolve, 1000));
       return this.getNote(noteId);
     }
-    return response.data;
+
+    if (!response.data) {
+      throw new HackMDError(
+        `Failed to update note ${noteId}`,
+        HackMDErrorType.UNKNOWN
+      );
+    }
+    return response.data as HackMDNote;
   }
 
   // Deletes a note
   async deleteNote(noteId: string): Promise<boolean> {
     const response = await this.request('DELETE', `/notes/${noteId}`);
-    // Both successful deletion and "already deleted" cases return true
     if (response.status === 404) {
       console.debug(`Note ${noteId} was already deleted or doesn't exist`);
     }
+    // Both successful deletion and "already deleted" cases return true
     return true;
   }
 
+  // Extracts note ID from HackMD URL
   public getIdFromUrl(url: string): string | null {
     const match = url.match(/hackmd\.io\/(?:@[^/]+\/)?([a-zA-Z0-9_-]+)/);
     return match ? match[1] : null;
