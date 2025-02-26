@@ -199,38 +199,171 @@ export default class HackMDPlugin extends Plugin {
     return result;
   }
 
-  async createNoteFromHackMDUrl(url: string) {
-    const noteId = this.client.getIdFromUrl(url);
+  /**
+   * Find a note in the vault with a specific HackMD ID
+   * @param noteId HackMD ID to search for
+   * @returns TFile if found, null otherwise
+   */
+  private findNoteWithHackMDId(noteId: string): TFile | null {
+    // Pre-calculate the exact URL we're looking for
+    const searchUrl = `https://hackmd.io/${noteId}`;
+    const files = this.app.vault.getMarkdownFiles();
+
+    // Utiliser find pour une recherche plus élégante
+    return (
+      files.find(file => {
+        const cache = this.app.metadataCache.getFileCache(file);
+        return cache?.frontmatter?.url === searchUrl;
+      }) || null
+    );
+  }
+
+  /**
+   * Prepares note content by adding fresh metadata and preserving non-sync frontmatter
+   * @param noteContent The raw content from HackMD
+   * @param noteId The HackMD note ID
+   * @param noteTitle The note title
+   * @param teamPath Optional team path if note belongs to a team
+   * @returns Processed content with appropriate metadata
+   */
+  private prepareNoteContent(
+    noteContent: string,
+    noteId: string,
+    noteTitle: string,
+    teamPath?: string
+  ): string {
+    const { frontmatter } = this.getFrontmatter(noteContent);
+
+    // Always create fresh synchronization metadata for newly imported notes
+    // This ensures we don't inherit potentially problematic metadata from other users
+    const newMetadata: Partial<HackMDMetadata> = {
+      url: `https://hackmd.io/${noteId}`,
+      title: noteTitle,
+      lastSync: new Date().toISOString(),
+    };
+
+    if (teamPath) {
+      newMetadata.teamPath = teamPath;
+    }
+
+    // Preserve any existing non-sync frontmatter content
+    // But ensure our sync metadata takes precedence
+    const existingNonSyncFrontmatter = { ...frontmatter };
+
+    // Remove any existing sync metadata keys that we'll replace
+    delete existingNonSyncFrontmatter.url;
+    delete existingNonSyncFrontmatter.lastSync;
+    delete existingNonSyncFrontmatter.teamPath;
+
+    // Merge non-sync frontmatter with our fresh sync metadata
+    const newFrontmatter = { ...existingNonSyncFrontmatter, ...newMetadata };
+
+    // Extract content without frontmatter
+    const contentWithoutFrontmatter = frontmatter
+      ? noteContent.slice(this.getFrontmatter(noteContent).position)
+      : noteContent;
+
+    // Rebuild content with new metadata
+    return this.combine(newFrontmatter, contentWithoutFrontmatter);
+  }
+
+  /**
+   * Generates a unique filename to avoid conflicts
+   * @param baseTitle The original title to use as a base
+   * @returns A unique filename that doesn't exist in the vault
+   */
+  private generateUniqueFileName(baseTitle: string): string {
+    let fileName = `${baseTitle}.md`;
+    let filePath = this.app.vault.getAbstractFileByPath(fileName)?.path;
+    let counter = 1;
+
+    while (filePath) {
+      fileName = `${baseTitle} (${counter}).md`;
+      filePath = this.app.vault.getAbstractFileByPath(fileName)?.path;
+      counter++;
+    }
+
+    return fileName;
+  }
+
+  /**
+   * Notifies the user that a note already exists and suggests next steps
+   * @param existingNote The file that already contains this HackMD note
+   */
+  private notifyExistingNote(existingNote: TFile): void {
+    new Notice(
+      `This note already exists at "${existingNote.path}". Open it and use the "Pull" command to update its content.`
+    );
+    // Optionally open the existing note
+    this.app.workspace.getLeaf().openFile(existingNote);
+  }
+
+  /**
+   * Shows a notification about note creation
+   * @param fileName The name of the created file
+   */
+  private notifyNoteCreation(fileName: string): void {
+    new Notice(`Note created: ${fileName}`);
+  }
+
+  /**
+   * Handles errors during note creation with appropriate messages
+   * @param error The error that occurred
+   */
+  private handleNoteCreationError(error: any): void {
+    if (error.type === 'auth_failed') {
+      new Notice('Authentication failed. Please check your access token.');
+    } else if (error.type === 'permission_denied') {
+      new Notice('Permission denied. You do not have access to this note.');
+    } else {
+      console.error('Error creating note:', error);
+      new Notice('Failed to create note from HackMD URL.');
+    }
+  }
+
+  /**
+   * Creates a note from a HackMD URL
+   * @param url The HackMD URL to import
+   * @returns Promise that resolves when the operation is complete
+   */
+  async createNoteFromHackMDUrl(url: string): Promise<void> {
+    const client = await this.getClient();
+    const noteId = client.getIdFromUrl(url);
+
     if (!noteId) {
       new Notice('Invalid HackMD URL.');
       return;
     }
 
+    // Check if the note already exists
+    const existingNote = this.findNoteWithHackMDId(noteId);
+    if (existingNote) {
+      this.notifyExistingNote(existingNote);
+      return;
+    }
+
     try {
-      const noteData = await this.client.getNote(noteId);
+      // Get note data
+      const noteData = await client.getNote(noteId);
       const noteTitle = noteData.title || 'Untitled';
       const noteContent = noteData.content || '';
 
-      let fileName = `${noteTitle}.md`;
-      let filePath = this.app.vault.getAbstractFileByPath(fileName)?.path;
-      let counter = 1;
+      // Prepare content
+      const finalContent = this.prepareNoteContent(
+        noteContent,
+        noteId,
+        noteTitle,
+        noteData.teamPath
+      );
 
-      while (filePath) {
-        fileName = `${noteTitle} (${counter}).md`;
-        filePath = this.app.vault.getAbstractFileByPath(fileName)?.path;
-        counter++;
-      }
+      // Create note with unique filename
+      const fileName = this.generateUniqueFileName(noteTitle);
+      await this.app.vault.create(fileName, finalContent);
 
-      await this.app.vault.create(fileName, noteContent);
-      new Notice(`Note created: ${fileName}`);
+      // Notify user
+      this.notifyNoteCreation(fileName);
     } catch (error) {
-      if (error.type === 'auth_failed') {
-        new Notice('Authentication failed. Please check your access token.');
-      } else if (error.type === 'permission_denied') {
-        new Notice('Permission denied. You do not have access to this note.');
-      } else {
-        new Notice('Failed to create note from HackMD URL.');
-      }
+      this.handleNoteCreationError(error);
     }
   }
 
