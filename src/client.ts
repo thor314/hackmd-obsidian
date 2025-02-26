@@ -23,19 +23,38 @@ interface NoteOptions {
 
 // Client for interacting with the HackMD API
 export class HackMDClient {
+  private static instance: HackMDClient;
+  private static accessToken: string;
   private readonly baseUrl = 'https://api.hackmd.io/v1';
   private readonly headers: Record<string, string>;
 
-  /**
-   * Creates a new HackMD client
-   * @param accessToken - HackMD API access token
-   */
-  constructor(accessToken: string) {
+  private constructor(accessToken: string) {
     this.headers = {
       Authorization: `Bearer ${accessToken}`,
       'Content-Type': 'application/json',
       Accept: 'application/json',
     };
+  }
+
+  public static async getInstance(accessToken: string): Promise<HackMDClient> {
+    if (!accessToken) {
+      throw new HackMDError(
+        'Failed to initialize HackMD client. Check your access token.',
+        HackMDErrorType.AUTH_FAILED
+      );
+    }
+
+    if (HackMDClient.instance && HackMDClient.accessToken === accessToken) {
+      return HackMDClient.instance;
+    }
+    HackMDClient.instance = new HackMDClient(accessToken);
+    HackMDClient.accessToken = accessToken;
+    await HackMDClient.instance.getMe(); // Verify token works
+    return HackMDClient.instance;
+  }
+
+  public static resetInstance(): void {
+    HackMDClient.accessToken = '';
   }
 
   /**

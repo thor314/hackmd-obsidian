@@ -25,12 +25,10 @@ import {
 
 export default class HackMDPlugin extends Plugin {
   settings: HackMDPluginSettings;
-  private client!: HackMDClient;
   private readonly SYNC_TIME_MARGIN = 4000;
 
   async onload() {
     this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
-    this.resetClient();
     this.registerEditorCommands();
     this.registerStandaloneCommands();
     this.addSettingTab(new HackMDSettingTab(this.app, this));
@@ -116,24 +114,8 @@ export default class HackMDPlugin extends Plugin {
     };
   }
 
-  public async resetClient(): Promise<void> {
-    try {
-      if (!this.settings.accessToken) throw new Error();
-      this.client = new HackMDClient(this.settings.accessToken);
-      await this.client.getMe();
-    } catch (error) {
-      throw new HackMDError(
-        'Failed to initialize HackMD client. Check your access token.',
-        HackMDErrorType.AUTH_FAILED
-      );
-    }
-  }
-
-  public async getClient(): Promise<HackMDClient> {
-    if (!this.client) {
-      await this.resetClient();
-    }
-    return this.client;
+  private async getClient(): Promise<HackMDClient> {
+    return HackMDClient.getInstance(this.settings.accessToken);
   }
 
   private async pushToHackMD(

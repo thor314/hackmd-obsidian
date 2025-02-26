@@ -4,6 +4,7 @@ import {
   CommentPermissionType,
 } from '@hackmd/api/dist/type';
 import type HackMDPlugin from './main';
+import { HackMDClient } from './client';
 
 // Plugin settings configuration
 export interface HackMDPluginSettings {
@@ -49,7 +50,7 @@ export class HackMDSettingTab extends PluginSettingTab {
           .onChange(async value => {
             this.plugin.settings.accessToken = value;
             await this.plugin.saveData(this.plugin.settings);
-            this.plugin.resetClient();
+            HackMDClient.resetInstance();
           })
       );
   }
