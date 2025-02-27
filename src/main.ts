@@ -276,7 +276,7 @@ export default class HackMDPlugin extends Plugin {
       `This note already exists at "${existingNote.path}". Open it and use the "Pull" command to update its content.`
     );
     // Optionally open the existing note
-    this.app.workspace.getLeaf().openFile(existingNote);
+    this.app.workspace.getLeaf(true).openFile(existingNote);
   }
 
   /**
@@ -339,7 +339,9 @@ export default class HackMDPlugin extends Plugin {
 
       // Create note with unique filename
       const fileName = this.generateUniqueFileName(noteTitle);
-      await this.app.vault.create(fileName, finalContent);
+      const newFile = await this.app.vault.create(fileName, finalContent);
+
+      this.app.workspace.getLeaf(true).openFile(newFile);
 
       // Notify user
       this.notifyNoteCreation(fileName);
