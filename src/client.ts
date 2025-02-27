@@ -5,6 +5,7 @@ import {
   HackMDNote,
   HackMDResponse,
   HackMDUser,
+  isHackMDUser,
   NoteOptions,
 } from './types';
 
@@ -128,20 +129,10 @@ export class HackMDClient {
     }
   }
 
-  private isHackMDUser(data: unknown): data is HackMDUser {
-    return (
-      typeof data === 'object' &&
-      data !== null &&
-      'id' in data &&
-      'name' in data &&
-      'userPath' in data
-    );
-  }
-
   // Gets the current user's information
   async getMe(): Promise<HackMDUser> {
     const response = await this.request('GET', '/me');
-    if (!response.data || !this.isHackMDUser(response.data)) {
+    if (!response.data || !isHackMDUser(response.data)) {
       throw new HackMDError(
         'Failed to get user information',
         HackMDErrorType.NOT_FOUND
@@ -198,10 +189,13 @@ export class HackMDClient {
     // Both successful deletion and "already deleted" cases return true
     return true;
   }
+}
 
-  // Extracts note ID from HackMD URL
-  public getIdFromUrl(url: string): string | null {
-    const match = url.match(/hackmd\.io\/(?:@[^/]+\/)?([a-zA-Z0-9_-]+)/);
-    return match ? match[1] : null;
-  }
+export function getIdFromUrl(url: string): string | null {
+  const match = url.match(/hackmd\.io\/(?:@[^/]+\/)?([a-zA-Z0-9_-]+)/);
+  return match ? match[1] : null;
+}
+
+export function getUrlFromId(noteId: string): string {
+  return `https://hackmd.io/${noteId}`;
 }

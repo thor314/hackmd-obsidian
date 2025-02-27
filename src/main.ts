@@ -8,7 +8,7 @@ import {
   stringifyYaml,
   MarkdownFileInfo,
 } from 'obsidian';
-import { HackMDClient } from './client';
+import { getIdFromUrl, getUrlFromId, HackMDClient } from './client';
 import {
   HackMDPluginSettings,
   DEFAULT_SETTINGS,
@@ -21,6 +21,9 @@ import {
   SyncMode,
   HackMDError,
   HackMDErrorType,
+  HackMDNote,
+  SyncPrepareResult,
+  UpdateLocalNoteParams,
 } from './types';
 
 export default class HackMDPlugin extends Plugin {
@@ -137,7 +140,7 @@ export default class HackMDPlugin extends Plugin {
     }
 
     const updatedMetadata: Partial<HackMDMetadata> = {
-      url: `https://hackmd.io/${result.id}`,
+      url: getUrlFromId(result.id),
       title: result.title || file.basename,
       lastSync: new Date().toISOString(),
     };
@@ -159,26 +162,22 @@ export default class HackMDPlugin extends Plugin {
     editor: Editor,
     file: TFile,
     content: string
-  ): Promise<any> {
+  ): Promise<HackMDNote> {
     const client = await this.getClient();
+    const { frontmatter } = this.getFrontmatter(content);
 
-    // First ensure the title is in the frontmatter
-    const { frontmatter, content: noteContent } = this.getFrontmatter(content);
     const newFrontmatter: NoteFrontmatter = {
       ...frontmatter,
       title: file.basename,
     };
 
-    // Create the note with proper title in frontmatter
-    const contentWithTitle = this.combine(newFrontmatter, noteContent);
-    const result = await client.createNote({
+    const contentWithTitle = this.combine(newFrontmatter, content);
+    return client.createNote({
       content: contentWithTitle,
       readPermission: this.settings.defaultReadPermission,
       writePermission: this.settings.defaultWritePermission,
       commentPermission: this.settings.defaultCommentPermission,
     });
-
-    return result;
   }
 
   /**
@@ -188,7 +187,7 @@ export default class HackMDPlugin extends Plugin {
    */
   private findNoteWithHackMDId(noteId: string): TFile | null {
     // Pre-calculate the exact URL we're looking for
-    const searchUrl = `https://hackmd.io/${noteId}`;
+    const searchUrl = getUrlFromId(noteId);
     const files = this.app.vault.getMarkdownFiles();
 
     // Utiliser find pour une recherche plus élégante
@@ -219,7 +218,7 @@ export default class HackMDPlugin extends Plugin {
     // Always create fresh synchronization metadata for newly imported notes
     // This ensures we don't inherit potentially problematic metadata from other users
     const newMetadata: Partial<HackMDMetadata> = {
-      url: `https://hackmd.io/${noteId}`,
+      url: getUrlFromId(noteId),
       title: noteTitle,
       lastSync: new Date().toISOString(),
     };
@@ -292,7 +291,7 @@ export default class HackMDPlugin extends Plugin {
    * Handles errors during note creation with appropriate messages
    * @param error The error that occurred
    */
-  private handleNoteCreationError(error: any): void {
+  private handleNoteCreationError(error: HackMDError): void {
     if (error.type === 'auth_failed') {
       new Notice('Authentication failed. Please check your access token.');
     } else if (error.type === 'permission_denied') {
@@ -309,8 +308,7 @@ export default class HackMDPlugin extends Plugin {
    * @returns Promise that resolves when the operation is complete
    */
   async createNoteFromHackMDUrl(url: string): Promise<void> {
-    const client = await this.getClient();
-    const noteId = client.getIdFromUrl(url);
+    const noteId = getIdFromUrl(url);
 
     if (!noteId) {
       new Notice('Invalid HackMD URL.');
@@ -326,6 +324,7 @@ export default class HackMDPlugin extends Plugin {
 
     try {
       // Get note data
+      const client = await this.getClient();
       const noteData = await client.getNote(noteId);
       const noteTitle = noteData.title || 'Untitled';
       const noteContent = noteData.content || '';
@@ -366,9 +365,8 @@ export default class HackMDPlugin extends Plugin {
     }
 
     const note = await client.getNote(noteId);
-
     const updatedMetadata: Partial<HackMDMetadata> = {
-      url: `https://hackmd.io/${note.id}`,
+      url: getUrlFromId(note.id),
       title: note.title || file.basename,
       lastSync: new Date().toISOString(),
     };
@@ -393,17 +391,14 @@ export default class HackMDPlugin extends Plugin {
       throw new Error('This file has not been pushed to HackMD yet.');
     }
 
-    await navigator.clipboard.writeText(`https://hackmd.io/${noteId}`);
+    await navigator.clipboard.writeText(getUrlFromId(noteId));
     new Notice('HackMD URL copied to clipboard!');
   }
 
   private async deleteHackMDNote(editor: Editor, file: TFile): Promise<void> {
     const client = await this.getClient();
-
     const { frontmatter } = await this.prepareSync(editor);
-    const noteId = frontmatter?.url
-      ? client.getIdFromUrl(frontmatter.url)
-      : null;
+    const noteId = frontmatter?.url ? getIdFromUrl(frontmatter.url) : null;
 
     if (!noteId) {
       throw new Error('This file is not linked to a HackMD note.');
@@ -422,18 +417,11 @@ export default class HackMDPlugin extends Plugin {
     modal.open();
   }
 
-  private async prepareSync(editor: Editor): Promise<{
-    content: string;
-    frontmatter: NoteFrontmatter | null;
-    noteId: string | null;
-  }> {
-    const client = await this.getClient();
+  private async prepareSync(editor: Editor): Promise<SyncPrepareResult> {
     if (!editor) throw new Error('Editor not found');
     const content = editor.getValue();
     const { frontmatter } = this.getFrontmatter(content);
-    const noteId = frontmatter?.url
-      ? client.getIdFromUrl(frontmatter.url)
-      : null;
+    const noteId = frontmatter?.url ? getIdFromUrl(frontmatter.url) : null;
     return { content, frontmatter, noteId };
   }
 
@@ -446,7 +434,6 @@ export default class HackMDPlugin extends Plugin {
     if (!fmMatch) {
       return { frontmatter: null, content, position: 0 };
     }
-
     try {
       const frontmatter = parseYaml(fmMatch[1]);
       const position = fmMatch[0].length;
@@ -460,7 +447,6 @@ export default class HackMDPlugin extends Plugin {
 
   private async checkPushConflicts(file: TFile, noteId: string): Promise<void> {
     const client = await this.getClient();
-
     const note = await client.getNote(noteId);
     const content = await this.app.vault.read(file);
     const { frontmatter } = this.getFrontmatter(content);
@@ -509,11 +495,7 @@ export default class HackMDPlugin extends Plugin {
     }
   }
 
-  private async updateLocalNote(params: {
-    editor: Editor;
-    content?: string;
-    metadata: Partial<HackMDMetadata>;
-  }): Promise<void> {
+  private async updateLocalNote(params: UpdateLocalNoteParams): Promise<void> {
     const { editor, metadata } = params;
     const baseContent = params.content ?? editor.getValue();
     const { frontmatter, content: noteContent } =

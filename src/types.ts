@@ -1,4 +1,4 @@
-import { TFile } from 'obsidian';
+import { Editor } from 'obsidian';
 import {
   NotePermissionRole,
   CommentPermissionType,
@@ -13,8 +13,20 @@ export interface HackMDMetadata {
 }
 
 // Note frontmatter structure
-export interface NoteFrontmatter {
+export interface NoteFrontmatter extends Partial<HackMDMetadata> {
   [key: string]: any;
+}
+
+export interface SyncPrepareResult {
+  content: string;
+  frontmatter: NoteFrontmatter | null;
+  noteId: string | null;
+}
+
+export interface UpdateLocalNoteParams {
+  editor: Editor;
+  content?: string;
+  metadata: Partial<HackMDMetadata>;
 }
 
 // Response types for HackMD API - simplified to what we use
@@ -66,14 +78,14 @@ export interface ModalConfig {
 }
 
 // Type guards
-export function isHackMDMetadata(value: any): value is HackMDMetadata {
-  return (
-    value &&
-    typeof value === 'object' &&
-    'url' in value &&
-    'title' in value &&
-    'lastSync' in value
-  );
+export function isHackMDMetadata(
+  value: NoteFrontmatter
+): value is HackMDMetadata {
+  return 'url' in value && 'title' in value && 'lastSync' in value;
+}
+
+export function isHackMDUser(data: object): data is HackMDUser {
+  return data !== null && 'id' in data && 'name' in data && 'userPath' in data;
 }
 
 export function hasFrontmatter(content: string): boolean {
