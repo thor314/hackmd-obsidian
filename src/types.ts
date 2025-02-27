@@ -92,58 +92,60 @@ export function hasFrontmatter(content: string): boolean {
   return content.startsWith('---\n');
 }
 
-// Error types
+// Error types - User-oriented error messages directly embedded in enum values
 export enum HackMDErrorType {
-  AUTH_FAILED = 'auth_failed',
-  NOT_FOUND = 'not_found',
-  NETWORK_ERROR = 'network_error',
-  SYNC_CONFLICT = 'sync_conflict',
-  PERMISSION_DENIED = 'permission_denied',
-  UNKNOWN = 'unknown',
+  // Authentication Errors
+  AUTH_REQUIRED = 'An access token is required. Please configure your HackMD token in settings.',
+  AUTH_INVALID = 'Your HackMD access token appears to be invalid. Please check your settings.',
+  AUTH_EXPIRED = 'Your HackMD session has expired. Please generate a new access token.',
+
+  // Synchronization Errors
+  SYNC_CONFLICT_REMOTE = "Remote note has been modified since your last sync. Use 'Force Pull' to override local changes.",
+  SYNC_CONFLICT_LOCAL = "Local note has been modified since your last sync. Use 'Force Push' to override remote version.",
+  SYNC_NOT_LINKED = "This note is not linked to HackMD. Use 'Push' to publish it first.",
+  SYNC_METADATA_MISSING = "Sync metadata is missing. Use 'Force Push/Pull' to reset synchronization.",
+
+  // Access Errors
+  PERMISSION_DENIED = "You don't have permission to access this HackMD note.",
+  NOTE_NOT_FOUND = 'This note no longer exists on HackMD. It may have been deleted.',
+  TEAM_ACCESS_DENIED = "You don't have access to this team note. Contact your team administrator.",
+
+  // Network Errors
+  CONNECTION_FAILED = 'Unable to connect to HackMD. Check your internet connection.',
+  SERVER_ERROR = 'The HackMD server encountered an error. Please try again later.',
+  RATE_LIMITED = 'Too many requests to HackMD. Please wait a few minutes before trying again.',
+
+  // Local Handling Errors
+  FILE_EXISTS = 'A file with this name already exists. An alternative name has been used.',
+  INVALID_URL = 'The provided HackMD URL is invalid. Check the format.',
+  PARSE_ERROR = 'Unable to process the note content. The format may be incompatible.',
+
+  // Context Errors
+  NO_ACTIVE_NOTE = 'This command requires an active Markdown note.',
+  OBSIDIAN_RESTRICTION = 'This operation is not allowed by Obsidian in this context.',
+
+  // Fallback
+  UNKNOWN = 'An unknown error occurred.',
 }
 
 export class HackMDError extends Error {
   public type: HackMDErrorType;
   public statusCode?: number;
+  public originalError?: any;
 
   constructor(
-    message: string,
     type: HackMDErrorType = HackMDErrorType.UNKNOWN,
-    statusCode?: number
+    message?: string,
+    statusCode?: number,
+    originalError?: any
   ) {
-    super(message);
+    // Use provided message or the message embedded in the enum
+    super(message || type);
+
     this.type = type;
     this.statusCode = statusCode;
+    this.originalError = originalError;
     this.name = 'HackMDError';
-  }
-
-  static fromApiError(error: any): HackMDError {
-    switch (error.status) {
-      case 401:
-        return new HackMDError(
-          'Authentication failed. Please check your access token.',
-          HackMDErrorType.AUTH_FAILED,
-          401
-        );
-      case 403:
-        return new HackMDError(
-          'Not authorized to perform this action.',
-          HackMDErrorType.PERMISSION_DENIED,
-          403
-        );
-      case 404:
-        return new HackMDError(
-          'Resource not found.',
-          HackMDErrorType.NOT_FOUND,
-          404
-        );
-      default:
-        return new HackMDError(
-          `Request failed: ${error.message}`,
-          HackMDErrorType.UNKNOWN,
-          error.status
-        );
-    }
   }
 }
 

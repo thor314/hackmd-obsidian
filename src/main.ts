@@ -33,7 +33,7 @@ export default class HackMDPlugin extends Plugin {
   async onload() {
     this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
     this.registerEditorCommands();
-    this.registerStandaloneCommands();
+    this.registerCreateFromHackMDCommand();
     this.addSettingTab(new HackMDSettingTab(this.app, this));
   }
 
@@ -71,50 +71,52 @@ export default class HackMDPlugin extends Plugin {
       this.addCommand({
         id: command.name.toLowerCase().replace(/ /g, '-'),
         name: command.name,
-        editorCallback: this.createCallback(command.callback, true),
+        editorCallback: this.createEditorCallback(command.callback),
       });
     }
   }
 
-  private registerStandaloneCommands(): void {
-    this.addCommand({
-      id: 'create-note-from-hackmd-url',
-      name: 'Create Note from HackMD URL',
-      callback: () => this.promptAndCreateNote(),
-    });
-  }
-
-  private async promptAndCreateNote(): Promise<void> {
-    const url = await new Promise<string | null>(resolve => {
-      ModalFactory.createUrlPromptModal(this.app, async value => {
-        resolve(value);
-      }).open();
-    });
-
-    if (url) {
-      await this.createNoteFromHackMDUrl(url);
-    }
-  }
-
-  private createCallback<T extends (...args: any[]) => Promise<void>>(
-    callback: T,
-    requiresEditor: boolean
+  private createEditorCallback<T extends (...args: any[]) => Promise<void>>(
+    callback: T
   ) {
     return async (editor?: Editor, ctx?: MarkdownView | MarkdownFileInfo) => {
       try {
-        if (requiresEditor) {
-          if (!ctx || !(ctx instanceof MarkdownView) || !ctx.file) {
-            throw new Error('This command requires an active markdown file');
-          }
-          await callback(editor, ctx.file);
-        } else {
-          await callback();
+        if (!ctx || !(ctx instanceof MarkdownView) || !ctx.file) {
+          throw new HackMDError(HackMDErrorType.NO_ACTIVE_NOTE);
         }
+        await callback(editor, ctx.file);
       } catch (error) {
-        console.error('Command failed:', error);
-        new Notice(`Operation failed: ${error.message}`);
+        this.handleCommandError(error);
       }
     };
+  }
+
+  private registerCreateFromHackMDCommand(): void {
+    this.addCommand({
+      id: 'create-note-from-hackmd-url',
+      name: 'Create Note from HackMD URL',
+      callback: this.createNonEditorCallback(() => this.promptAndCreateNote()),
+    });
+  }
+
+  private createNonEditorCallback<T extends () => Promise<void>>(callback: T) {
+    return async () => {
+      try {
+        await callback();
+      } catch (error) {
+        this.handleCommandError(error);
+      }
+    };
+  }
+
+  private handleCommandError(error: any): void {
+    console.error('Command failed:', error);
+    if (error instanceof HackMDError) {
+      // Use the error message directly - it's already user-friendly
+      new Notice(error.message);
+    } else {
+      new Notice(`Operation failed: ${error.message}`);
+    }
   }
 
   private async getClient(): Promise<HackMDClient> {
@@ -287,18 +289,15 @@ export default class HackMDPlugin extends Plugin {
     new Notice(`Note created: ${fileName}`);
   }
 
-  /**
-   * Handles errors during note creation with appropriate messages
-   * @param error The error that occurred
-   */
-  private handleNoteCreationError(error: HackMDError): void {
-    if (error.type === 'auth_failed') {
-      new Notice('Authentication failed. Please check your access token.');
-    } else if (error.type === 'permission_denied') {
-      new Notice('Permission denied. You do not have access to this note.');
-    } else {
-      console.error('Error creating note:', error);
-      new Notice('Failed to create note from HackMD URL.');
+  private async promptAndCreateNote(): Promise<void> {
+    const url = await new Promise<string | null>(resolve => {
+      ModalFactory.createUrlPromptModal(this.app, async value => {
+        resolve(value);
+      }).open();
+    });
+
+    if (url) {
+      await this.createNoteFromHackMDUrl(url);
     }
   }
 
@@ -311,8 +310,7 @@ export default class HackMDPlugin extends Plugin {
     const noteId = getIdFromUrl(url);
 
     if (!noteId) {
-      new Notice('Invalid HackMD URL.');
-      return;
+      throw new Error('Invalid HackMD URL.');
     }
 
     // Check if the note already exists
@@ -322,32 +320,28 @@ export default class HackMDPlugin extends Plugin {
       return;
     }
 
-    try {
-      // Get note data
-      const client = await this.getClient();
-      const noteData = await client.getNote(noteId);
-      const noteTitle = noteData.title || 'Untitled';
-      const noteContent = noteData.content || '';
+    // Get note data
+    const client = await this.getClient();
+    const noteData = await client.getNote(noteId);
+    const noteTitle = noteData.title || 'Untitled';
+    const noteContent = noteData.content || '';
 
-      // Prepare content
-      const finalContent = this.prepareNoteContent(
-        noteContent,
-        noteId,
-        noteTitle,
-        noteData.teamPath
-      );
+    // Prepare content
+    const finalContent = this.prepareNoteContent(
+      noteContent,
+      noteId,
+      noteTitle,
+      noteData.teamPath
+    );
 
-      // Create note with unique filename
-      const fileName = this.generateUniqueFileName(noteTitle);
-      const newFile = await this.app.vault.create(fileName, finalContent);
+    // Create note with unique filename
+    const fileName = this.generateUniqueFileName(noteTitle);
+    const newFile = await this.app.vault.create(fileName, finalContent);
 
-      this.app.workspace.getLeaf(true).openFile(newFile);
+    this.app.workspace.getLeaf(true).openFile(newFile);
 
-      // Notify user
-      this.notifyNoteCreation(fileName);
-    } catch (error) {
-      this.handleNoteCreationError(error);
-    }
+    // Notify user
+    this.notifyNoteCreation(fileName);
   }
 
   private async pullFromHackMD(
@@ -359,7 +353,7 @@ export default class HackMDPlugin extends Plugin {
     const { noteId } = await this.prepareSync(editor);
 
     if (!noteId) {
-      throw new Error('This file has not been pushed to HackMD yet.');
+      throw new HackMDError(HackMDErrorType.SYNC_NOT_LINKED);
     }
 
     if (mode === 'normal') {
@@ -390,7 +384,7 @@ export default class HackMDPlugin extends Plugin {
     const { noteId } = await this.prepareSync(editor);
 
     if (!noteId) {
-      throw new Error('This file has not been pushed to HackMD yet.');
+      throw new HackMDError(HackMDErrorType.SYNC_NOT_LINKED);
     }
 
     await navigator.clipboard.writeText(getUrlFromId(noteId));
@@ -403,7 +397,7 @@ export default class HackMDPlugin extends Plugin {
     const noteId = frontmatter?.url ? getIdFromUrl(frontmatter.url) : null;
 
     if (!noteId) {
-      throw new Error('This file is not linked to a HackMD note.');
+      throw new HackMDError(HackMDErrorType.SYNC_NOT_LINKED);
     }
 
     const modal = ModalFactory.createDeleteModal(
@@ -420,7 +414,10 @@ export default class HackMDPlugin extends Plugin {
   }
 
   private async prepareSync(editor: Editor): Promise<SyncPrepareResult> {
-    if (!editor) throw new Error('Editor not found');
+    if (!editor) {
+      throw new HackMDError(HackMDErrorType.NO_ACTIVE_NOTE);
+    }
+
     const content = editor.getValue();
     const { frontmatter } = this.getFrontmatter(content);
     const noteId = frontmatter?.url ? getIdFromUrl(frontmatter.url) : null;
@@ -455,10 +452,7 @@ export default class HackMDPlugin extends Plugin {
     const lastSyncStr = frontmatter?.lastSync;
 
     if (!lastSyncStr) {
-      throw new HackMDError(
-        'Could not verify the last sync of the local note. Pull remote note or use Force Push to overwrite.',
-        HackMDErrorType.SYNC_CONFLICT
-      );
+      throw new HackMDError(HackMDErrorType.SYNC_METADATA_MISSING);
     }
 
     const lastSyncTime = new Date(lastSyncStr).getTime();
@@ -467,10 +461,7 @@ export default class HackMDPlugin extends Plugin {
     ).getTime();
 
     if (lastSyncTime - remoteModTime > this.SYNC_TIME_MARGIN) {
-      throw new HackMDError(
-        'Remote note has been modified since last push. Pull change or use Force Push to overwrite.',
-        HackMDErrorType.SYNC_CONFLICT
-      );
+      throw new HackMDError(HackMDErrorType.SYNC_CONFLICT_REMOTE);
     }
   }
 
@@ -480,20 +471,14 @@ export default class HackMDPlugin extends Plugin {
     const lastSyncStr = frontmatter?.lastSync;
 
     if (!lastSyncStr) {
-      throw new HackMDError(
-        'Could not verify the last sync of the local note. Use Force Pull to overwrite.',
-        HackMDErrorType.SYNC_CONFLICT
-      );
+      throw new HackMDError(HackMDErrorType.SYNC_METADATA_MISSING);
     }
 
     const lastSyncTime = new Date(lastSyncStr).getTime();
     const localModTime = file.stat.mtime;
 
     if (localModTime - lastSyncTime > this.SYNC_TIME_MARGIN) {
-      throw new HackMDError(
-        'Local note has been modified since last sync. Use Force Pull to overwrite.',
-        HackMDErrorType.SYNC_CONFLICT
-      );
+      throw new HackMDError(HackMDErrorType.SYNC_CONFLICT_LOCAL);
     }
   }
 

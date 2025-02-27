@@ -26,10 +26,7 @@ export class HackMDClient {
 
   public static async getInstance(accessToken: string): Promise<HackMDClient> {
     if (!accessToken) {
-      throw new HackMDError(
-        'Failed to initialize HackMD client. Check your access token.',
-        HackMDErrorType.AUTH_FAILED
-      );
+      throw new HackMDError(HackMDErrorType.AUTH_REQUIRED);
     }
 
     if (HackMDClient.instance && HackMDClient.accessToken === accessToken) {
@@ -37,7 +34,15 @@ export class HackMDClient {
     }
     HackMDClient.instance = new HackMDClient(accessToken);
     HackMDClient.accessToken = accessToken;
-    await HackMDClient.instance.getMe(); // Verify token works
+
+    try {
+      await HackMDClient.instance.getMe(); // Verify token works
+    } catch (error) {
+      // Reset instance because token is invalid
+      HackMDClient.resetInstance();
+      throw error; // Rethrow to be handled by caller
+    }
+
     return HackMDClient.instance;
   }
 
@@ -99,32 +104,63 @@ export class HackMDClient {
     }
   }
 
-  // Handle API errors with HackMDError type
+  // Handle API errors with user-friendly HackMDError types
   private handleApiError(error: any): HackMDError {
+    // Network or connection errors don't have status
+    if (!error.status) {
+      return new HackMDError(
+        HackMDErrorType.CONNECTION_FAILED,
+        undefined,
+        0,
+        error
+      );
+    }
+
     switch (error.status) {
       case 401:
         return new HackMDError(
-          'Authentication failed. Please check your access token.',
-          HackMDErrorType.AUTH_FAILED,
-          401
+          HackMDErrorType.AUTH_INVALID,
+          undefined,
+          401,
+          error
         );
       case 403:
         return new HackMDError(
-          'Not authorized to perform this action.',
           HackMDErrorType.PERMISSION_DENIED,
-          403
+          undefined,
+          403,
+          error
         );
       case 404:
         return new HackMDError(
-          'Resource not found.',
-          HackMDErrorType.NOT_FOUND,
-          404
+          HackMDErrorType.NOTE_NOT_FOUND,
+          undefined,
+          404,
+          error
+        );
+      case 429:
+        return new HackMDError(
+          HackMDErrorType.RATE_LIMITED,
+          undefined,
+          429,
+          error
+        );
+      case 500:
+      case 502:
+      case 503:
+      case 504:
+        return new HackMDError(
+          HackMDErrorType.SERVER_ERROR,
+          undefined,
+          error.status,
+          error
         );
       default:
         return new HackMDError(
-          `Request failed: ${error.message}`,
           HackMDErrorType.UNKNOWN,
-          error.status
+          `Request failed: ${error.message}`,
+          error.status,
+          error
         );
     }
   }
@@ -134,8 +170,8 @@ export class HackMDClient {
     const response = await this.request('GET', '/me');
     if (!response.data || !isHackMDUser(response.data)) {
       throw new HackMDError(
-        'Failed to get user information',
-        HackMDErrorType.NOT_FOUND
+        HackMDErrorType.AUTH_INVALID,
+        'Failed to get user information'
       );
     }
     return response.data as HackMDUser;
@@ -146,8 +182,8 @@ export class HackMDClient {
     const response = await this.request('GET', `/notes/${noteId}`);
     if (!response.data) {
       throw new HackMDError(
-        `Note ${noteId} not found`,
-        HackMDErrorType.NOT_FOUND
+        HackMDErrorType.NOTE_NOT_FOUND,
+        `Note ${noteId} not found`
       );
     }
     return response.data as HackMDNote;
@@ -157,7 +193,7 @@ export class HackMDClient {
   async createNote(options: NoteOptions): Promise<HackMDNote> {
     const response = await this.request('POST', '/notes', options);
     if (!response.data) {
-      throw new HackMDError('Failed to create note', HackMDErrorType.UNKNOWN);
+      throw new HackMDError(HackMDErrorType.UNKNOWN, 'Failed to create note');
     }
     return response.data as HackMDNote;
   }
@@ -173,8 +209,8 @@ export class HackMDClient {
 
     if (!response.data) {
       throw new HackMDError(
-        `Failed to update note ${noteId}`,
-        HackMDErrorType.UNKNOWN
+        HackMDErrorType.UNKNOWN,
+        `Failed to update note ${noteId}`
       );
     }
     return response.data as HackMDNote;
