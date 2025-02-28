@@ -8,7 +8,11 @@
         "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
         "version": "node version-bump.mjs && git add manifest.json versions.json",
         "format": "prettier --write 'src/**/*.{ts,tsx}'",
-        "format:check": "prettier --check 'src/**/*.{ts,tsx}'"
+        "format:check": "prettier --check 'src/**/*.{ts,tsx}'",
+        "lint": "eslint 'src/**/*.ts' 'tests/**/*.ts'",
+        "lint:fix": "eslint --fix 'src/**/*.ts' 'tests/**/*.ts'",
+        "test": "vitest run",
+        "test:watch": "vitest"
     },
     "keywords": [],
     "author": "Thor Kampefner",
@@ -19,10 +23,12 @@
         "@typescript-eslint/parser": "5.29.0",
         "builtin-modules": "3.3.0",
         "esbuild": "0.17.3",
+        "eslint": "^8.56.0",
         "obsidian": "latest",
         "prettier": "^3.5.1",
         "tslib": "2.4.0",
-        "typescript": "4.7.4"
+        "typescript": "4.7.4",
+        "vitest": "^3.0.7"
     },
     "dependencies": {
         "@hackmd/api": "^2.4.0",
