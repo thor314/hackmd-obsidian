@@ -33,16 +33,10 @@ export class MockObsidianService implements IObsidianService {
   }
 
   /**
-   * Reset all mocks
-   */
-  reset(): void {
-    vi.resetAllMocks();
-  }
-
-  /**
    * Create a mock for the editor
+   * @private Used internally by createEditorAdapter
    */
-  createMockEditor(content = ''): IEditor {
+  private createMockEditor(content = ''): IEditor {
     return {
       getValue: vi.fn().mockReturnValue(content),
       setValue: vi.fn(),
@@ -71,28 +65,5 @@ export class MockObsidianService implements IObsidianService {
     };
     // Use mockRejectedValueOnce to make the next call reject with this error
     this.requestUrl.mockRejectedValueOnce(error);
-  }
-
-  /**
-   * Configure the mock to simulate different error responses
-   * based on the HTTP status passed in each call
-   */
-  mockFailedApiResponseWithCorrectStatus(): void {
-    this.requestUrl.mockImplementation(options => {
-      const errorCodeMatch = options.url.match(/\/error-(\d+)/);
-
-      if (errorCodeMatch) {
-        const status = parseInt(errorCodeMatch[1], 10);
-        const error = { message: `Error ${status}`, status: status };
-        return Promise.reject(error);
-      }
-
-      // Fallback
-      return Promise.resolve({
-        status: 200,
-        json: { id: 'default' },
-        text: '{"id":"default"}',
-      });
-    });
   }
 }
