@@ -62,7 +62,7 @@ export class HackMDClient {
    * @param data - Request body data
    * @returns Response from the API
    */
-  protected async request(
+  async request(
     method: string,
     endpoint: string,
     data?: NoteOptions
