@@ -4,11 +4,10 @@ import {
   Notice,
   Plugin,
   TFile,
-  parseYaml,
-  stringifyYaml,
   MarkdownFileInfo,
 } from 'obsidian';
 import { getIdFromUrl, getUrlFromId, HackMDClient } from './client';
+import { ObsidianService } from './obsidian-service';
 import {
   HackMDPluginSettings,
   DEFAULT_SETTINGS,
@@ -29,8 +28,10 @@ import {
 export default class HackMDPlugin extends Plugin {
   settings: HackMDPluginSettings;
   private readonly SYNC_TIME_MARGIN = 4000;
+  private obsidianService: ObsidianService;
 
   async onload() {
+    this.obsidianService = new ObsidianService();
     this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
     this.registerEditorCommands();
     this.registerCreateFromHackMDCommand();
@@ -120,7 +121,10 @@ export default class HackMDPlugin extends Plugin {
   }
 
   private async getClient(): Promise<HackMDClient> {
-    return HackMDClient.getInstance(this.settings.accessToken);
+    return HackMDClient.getInstance(
+      this.settings.accessToken,
+      this.obsidianService
+    );
   }
 
   private async pushToHackMD(
@@ -151,8 +155,10 @@ export default class HackMDPlugin extends Plugin {
       updatedMetadata.teamPath = result.teamPath;
     }
 
+    // Create editor adapter
+    const editorAdapter = this.obsidianService.createEditorAdapter(editor);
     await this.updateLocalNote({
-      editor,
+      editor: editorAdapter,
       content,
       metadata: updatedMetadata,
     });
@@ -310,7 +316,7 @@ export default class HackMDPlugin extends Plugin {
     const noteId = getIdFromUrl(url);
 
     if (!noteId) {
-      throw new Error('Invalid HackMD URL.');
+      throw new HackMDError(HackMDErrorType.INVALID_URL);
     }
 
     // Check if the note already exists
@@ -371,8 +377,10 @@ export default class HackMDPlugin extends Plugin {
       updatedMetadata.teamPath = note.teamPath;
     }
 
+    // Create editor adapter
+    const editorAdapter = this.obsidianService.createEditorAdapter(editor);
     await this.updateLocalNote({
-      editor,
+      editor: editorAdapter,
       content: note.content || '',
       metadata: updatedMetadata,
     });
@@ -394,7 +402,7 @@ export default class HackMDPlugin extends Plugin {
   private async deleteHackMDNote(editor: Editor, file: TFile): Promise<void> {
     const client = await this.getClient();
     const { frontmatter } = await this.prepareSync(editor);
-    const noteId = frontmatter?.url ? getIdFromUrl(frontmatter.url) : null;
+    const noteId = frontmatter?.url ? getIdFromUrl(frontmatter.url) : undefined;
 
     if (!noteId) {
       throw new HackMDError(HackMDErrorType.SYNC_NOT_LINKED);
@@ -418,9 +426,11 @@ export default class HackMDPlugin extends Plugin {
       throw new HackMDError(HackMDErrorType.NO_ACTIVE_NOTE);
     }
 
-    const content = editor.getValue();
+    // Adapter pattern - wrap Obsidian's Editor with our interface
+    const editorAdapter = this.obsidianService.createEditorAdapter(editor);
+    const content = editorAdapter.getValue();
     const { frontmatter } = this.getFrontmatter(content);
-    const noteId = frontmatter?.url ? getIdFromUrl(frontmatter.url) : null;
+    const noteId = frontmatter?.url ? getIdFromUrl(frontmatter.url) : undefined;
     return { content, frontmatter, noteId };
   }
 
@@ -434,7 +444,7 @@ export default class HackMDPlugin extends Plugin {
       return { frontmatter: null, content, position: 0 };
     }
     try {
-      const frontmatter = parseYaml(fmMatch[1]);
+      const frontmatter = this.obsidianService.parseYaml(fmMatch[1]);
       const position = fmMatch[0].length;
       const remainingContent = content.slice(position);
       return { frontmatter, content: remainingContent, position };
@@ -514,7 +524,8 @@ export default class HackMDPlugin extends Plugin {
   }
 
   private async cleanupHackMDMetadata(editor: Editor): Promise<void> {
-    const content = editor.getValue();
+    const editorAdapter = this.obsidianService.createEditorAdapter(editor);
+    const content = editorAdapter.getValue();
     const { frontmatter, content: noteContent } = this.getFrontmatter(content);
 
     if (frontmatter) {
@@ -531,14 +542,14 @@ export default class HackMDPlugin extends Plugin {
           cleanedFrontmatter,
           noteContent
         );
-        editor.setValue(frontmatterAndContent);
+        editorAdapter.setValue(frontmatterAndContent);
       } else {
-        editor.setValue(noteContent.trim());
+        editorAdapter.setValue(noteContent.trim());
       }
     }
   }
 
   private combine(frontmatter: NoteFrontmatter, content: string): string {
-    return `---\n${stringifyYaml(frontmatter).trim()}\n---\n${content}`;
+    return `---\n${this.obsidianService.stringifyYaml(frontmatter).trim()}\n---\n${content}`;
   }
 }

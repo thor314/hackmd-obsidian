@@ -1,4 +1,3 @@
-import { requestUrl } from 'obsidian';
 import {
   HackMDError,
   HackMDErrorType,
@@ -8,6 +7,7 @@ import {
   isHackMDUser,
   NoteOptions,
 } from './types';
+import { IObsidianService } from './obsidian-service';
 
 // Client for interacting with the HackMD API
 export class HackMDClient {
@@ -15,8 +15,10 @@ export class HackMDClient {
   private static accessToken: string;
   private readonly baseUrl = 'https://api.hackmd.io/v1';
   private readonly headers: Record<string, string>;
+  private obsidianService: IObsidianService;
 
-  private constructor(accessToken: string) {
+  private constructor(accessToken: string, obsidianService: IObsidianService) {
+    this.obsidianService = obsidianService;
     this.headers = {
       Authorization: `Bearer ${accessToken}`,
       'Content-Type': 'application/json',
@@ -24,7 +26,10 @@ export class HackMDClient {
     };
   }
 
-  public static async getInstance(accessToken: string): Promise<HackMDClient> {
+  public static async getInstance(
+    accessToken: string,
+    obsidianService: IObsidianService
+  ): Promise<HackMDClient> {
     if (!accessToken) {
       throw new HackMDError(HackMDErrorType.AUTH_REQUIRED);
     }
@@ -32,7 +37,7 @@ export class HackMDClient {
     if (HackMDClient.instance && HackMDClient.accessToken === accessToken) {
       return HackMDClient.instance;
     }
-    HackMDClient.instance = new HackMDClient(accessToken);
+    HackMDClient.instance = new HackMDClient(accessToken, obsidianService);
     HackMDClient.accessToken = accessToken;
 
     try {
@@ -57,14 +62,14 @@ export class HackMDClient {
    * @param data - Request body data
    * @returns Response from the API
    */
-  private async request(
+  protected async request(
     method: string,
     endpoint: string,
     data?: NoteOptions
   ): Promise<HackMDResponse> {
     const url = `${this.baseUrl}${endpoint}`;
     try {
-      const response = await requestUrl({
+      const response = await this.obsidianService.requestUrl({
         url,
         method,
         headers: {
@@ -227,9 +232,11 @@ export class HackMDClient {
   }
 }
 
-export function getIdFromUrl(url: string): string | null {
+export function getIdFromUrl(url: string): string | undefined {
+  if (!url) return undefined;
+
   const match = url.match(/hackmd\.io\/(?:@[^/]+\/)?([a-zA-Z0-9_-]+)/);
-  return match ? match[1] : null;
+  return match ? match[1] : undefined;
 }
 
 export function getUrlFromId(noteId: string): string {

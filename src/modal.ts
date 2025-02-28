@@ -15,7 +15,7 @@ interface ModalConfig {
  * Base class for plugin modals with common functionality
  */
 abstract class BaseModal extends Modal {
-  protected loading: boolean = false;
+  protected loading = false;
 
   /**
    * Creates the basic modal structure
@@ -44,7 +44,7 @@ abstract class BaseModal extends Modal {
     container: HTMLElement,
     text: string,
     handler: () => void | Promise<void>,
-    warning: boolean = false
+    warning = false
   ): HTMLButtonElement {
     const button = container.createEl('button', { text });
     if (warning) button.addClass('mod-warning');

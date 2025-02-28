@@ -1,8 +1,8 @@
-import { Editor } from 'obsidian';
 import {
   NotePermissionRole,
   CommentPermissionType,
 } from '@hackmd/api/dist/type';
+import { IEditor } from './obsidian-service';
 
 // HackMD metadata stored in note frontmatter
 export interface HackMDMetadata {
@@ -20,11 +20,11 @@ export interface NoteFrontmatter extends Partial<HackMDMetadata> {
 export interface SyncPrepareResult {
   content: string;
   frontmatter: NoteFrontmatter | null;
-  noteId: string | null;
+  noteId: string | undefined;
 }
 
 export interface UpdateLocalNoteParams {
-  editor: Editor;
+  editor: IEditor;
   content?: string;
   metadata: Partial<HackMDMetadata>;
 }
