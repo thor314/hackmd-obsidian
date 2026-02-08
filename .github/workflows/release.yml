@@ -32,10 +32,11 @@ jobs:
       - name: Create release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CHANGELOG_NOTES: ${{ steps.changelog.outputs.changes }}
         run: |
           tag="${GITHUB_REF#refs/tags/}"
           gh release create "$tag" \
             --title="$tag" \
-            --notes "${{ steps.changelog.outputs.changes }}" \
+            --notes "$CHANGELOG_NOTES" \
             --draft \
             main.js manifest.json styles.css
