@@ -470,7 +470,7 @@ export default class HackMDPlugin extends Plugin {
       note.lastChangedAt || note.createdAt
     ).getTime();
 
-    if (lastSyncTime - remoteModTime > this.SYNC_TIME_MARGIN) {
+    if (remoteModTime - lastSyncTime > this.SYNC_TIME_MARGIN) {
       throw new HackMDError(HackMDErrorType.SYNC_CONFLICT_REMOTE);
     }
   }
