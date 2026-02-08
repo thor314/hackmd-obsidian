@@ -301,7 +301,7 @@ export default class HackMDPlugin extends Plugin {
       note.lastChangedAt || note.createdAt
     ).getTime();
 
-    if (lastSyncTime - remoteModTime > this.SYNC_TIME_MARGIN) {
+    if (remoteModTime - lastSyncTime > this.SYNC_TIME_MARGIN) {
       throw new HackMDError(
         'Remote note has been modified since last push. Pull change or use Force Push to overwrite.',
         HackMDErrorType.SYNC_CONFLICT
