@@ -1,15 +1,15 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { HackMDClient } from '../src/client';
-import { MockObsidianService } from './mocks/obsidian-service.mock';
-import { HackMDErrorType } from '../src/types';
+import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { HackMDClient } from '../src/client'
+import { MockObsidianService } from './mocks/obsidian-service.mock'
+import { HackMDErrorType } from '../src/types'
 
 describe('HackMDClient Error Handling', () => {
   // Avant chaque test, nous allons réinitialiser l'instance singleton pour éviter la contamination entre tests
   beforeEach(() => {
     // Force reset of client instance to avoid test pollution
-    HackMDClient.resetInstance();
-    vi.resetAllMocks();
-  });
+    HackMDClient.resetInstance()
+    vi.resetAllMocks()
+  })
 
   describe('HTTP error status handling', () => {
     // Success response mock for authentication
@@ -25,7 +25,7 @@ describe('HackMDClient Error Handling', () => {
         name: 'Test User',
         userPath: 'test-path',
       }),
-    };
+    }
 
     // Test cases for HTTP error handling
     it.each([
@@ -69,7 +69,7 @@ describe('HackMDClient Error Handling', () => {
       'should handle $status $message as $expectedType',
       async ({ status, message, expectedType, expectedStatusCode }) => {
         // Create a fresh mock for this test
-        const mockObsidianService = new MockObsidianService();
+        const mockObsidianService = new MockObsidianService()
 
         // Configure mock to return success and then error
         mockObsidianService.requestUrl
@@ -77,22 +77,22 @@ describe('HackMDClient Error Handling', () => {
           .mockRejectedValueOnce({
             status,
             message,
-          });
+          })
 
         // Create client & test
         const client = await HackMDClient.getInstance(
           'test-token',
-          mockObsidianService
-        );
+          mockObsidianService,
+        )
 
         await expect(
-          client.request('GET', '/api/endpoint')
+          client.request('GET', '/api/endpoint'),
         ).rejects.toMatchObject({
           type: expectedType,
           statusCode:
             expectedStatusCode !== undefined ? expectedStatusCode : status,
-        });
-      }
-    );
-  });
-});
+        })
+      },
+    )
+  })
+})

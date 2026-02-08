@@ -1,21 +1,21 @@
-import { App, Modal, TextComponent } from 'obsidian';
+import { App, Modal, TextComponent } from 'obsidian'
 
 /**
  * Base interface for modal configurations
  */
 interface ModalConfig {
-  title: string;
-  message: string;
-  confirmText?: string;
-  cancelText?: string;
-  warning?: boolean;
+  title: string
+  message: string
+  confirmText?: string
+  cancelText?: string
+  warning?: boolean
 }
 
 /**
  * Base class for plugin modals with common functionality
  */
 abstract class BaseModal extends Modal {
-  protected loading = false;
+  protected loading = false
 
   /**
    * Creates the basic modal structure
@@ -23,18 +23,18 @@ abstract class BaseModal extends Modal {
   protected createModalContent(
     title: string,
     message: string,
-    buttonsContainer: HTMLElement
+    buttonsContainer: HTMLElement,
   ): void {
-    const { contentEl } = this;
+    const { contentEl } = this
 
     // Title
-    contentEl.createEl('h3', { text: title });
+    contentEl.createEl('h3', { text: title })
 
     // Message
-    contentEl.createEl('p', { text: message });
+    contentEl.createEl('p', { text: message })
 
     // Buttons container with styling
-    buttonsContainer.addClass('modal-button-container');
+    buttonsContainer.addClass('modal-button-container')
   }
 
   /**
@@ -44,15 +44,15 @@ abstract class BaseModal extends Modal {
     container: HTMLElement,
     text: string,
     handler: () => void | Promise<void>,
-    warning = false
+    warning = false,
   ): HTMLButtonElement {
-    const button = container.createEl('button', { text });
-    if (warning) button.addClass('mod-warning');
+    const button = container.createEl('button', { text })
+    if (warning) button.addClass('mod-warning')
     button.addEventListener('click', async () => {
-      if (this.loading) return;
-      await this.handleButtonClick(button, handler);
-    });
-    return button;
+      if (this.loading) return
+      await this.handleButtonClick(button, handler)
+    })
+    return button
   }
 
   /**
@@ -60,16 +60,16 @@ abstract class BaseModal extends Modal {
    */
   private async handleButtonClick(
     button: HTMLButtonElement,
-    handler: () => void | Promise<void>
+    handler: () => void | Promise<void>,
   ): Promise<void> {
-    const originalText = button.getText();
+    const originalText = button.getText()
     try {
-      this.setLoading(true);
-      button.setText('Processing...');
-      await handler();
+      this.setLoading(true)
+      button.setText('Processing...')
+      await handler()
     } finally {
-      this.setLoading(false);
-      button.setText(originalText);
+      this.setLoading(false)
+      button.setText(originalText)
     }
   }
 
@@ -77,14 +77,14 @@ abstract class BaseModal extends Modal {
    * Sets the loading state of the modal
    */
   protected setLoading(loading: boolean): void {
-    this.loading = loading;
+    this.loading = loading
     this.contentEl.findAll('button').forEach(button => {
       if (loading) {
-        button.setAttr('disabled', 'true');
+        button.setAttr('disabled', 'true')
       } else {
-        button.removeAttribute('disabled');
+        button.removeAttribute('disabled')
       }
-    });
+    })
   }
 }
 
@@ -92,29 +92,29 @@ abstract class BaseModal extends Modal {
  * Modal for confirming destructive actions
  */
 export class ConfirmModal extends BaseModal {
-  private config: ModalConfig;
-  private onConfirm: () => Promise<void>;
+  private config: ModalConfig
+  private onConfirm: () => Promise<void>
 
   constructor(app: App, config: ModalConfig, onConfirm: () => Promise<void>) {
-    super(app);
-    this.config = config;
-    this.onConfirm = onConfirm;
+    super(app)
+    this.config = config
+    this.onConfirm = onConfirm
   }
 
   onOpen() {
-    const buttonsContainer = this.contentEl.createDiv();
+    const buttonsContainer = this.contentEl.createDiv()
     this.createModalContent(
       this.config.title,
       this.config.message,
-      buttonsContainer
-    );
+      buttonsContainer,
+    )
 
     // Cancel button
     this.createButton(
       buttonsContainer,
       this.config.cancelText || 'Cancel',
-      () => this.close()
-    );
+      () => this.close(),
+    )
 
     // Confirm button
     this.createButton(
@@ -122,17 +122,17 @@ export class ConfirmModal extends BaseModal {
       this.config.confirmText || 'Confirm',
       async () => {
         try {
-          await this.onConfirm();
-          this.close();
+          await this.onConfirm()
+          this.close()
         } catch (error) {
-          console.error('Confirmation action failed:', error);
+          console.error('Confirmation action failed:', error)
           // Modal stays open on error, showing the error in the UI
-          const errorDiv = this.contentEl.createDiv('modal-error');
-          errorDiv.setText(error.message);
+          const errorDiv = this.contentEl.createDiv('modal-error')
+          errorDiv.setText(error.message)
         }
       },
-      this.config.warning
-    );
+      this.config.warning,
+    )
   }
 }
 
@@ -151,8 +151,8 @@ export class DeleteConfirmModal extends ConfirmModal {
         confirmText: 'Delete',
         warning: true,
       },
-      onConfirm
-    );
+      onConfirm,
+    )
   }
 }
 
@@ -160,39 +160,39 @@ export class DeleteConfirmModal extends ConfirmModal {
  * Modal for prompting the user to enter a URL
  */
 export class UrlPromptModal extends BaseModal {
-  private onSubmit: (value: string | null) => Promise<void>;
-  private input: TextComponent;
+  private onSubmit: (value: string | null) => Promise<void>
+  private input: TextComponent
 
   constructor(app: App, onSubmit: (value: string | null) => Promise<void>) {
-    super(app);
-    this.onSubmit = onSubmit;
+    super(app)
+    this.onSubmit = onSubmit
   }
 
   onOpen() {
-    const { contentEl } = this;
-    contentEl.createEl('h2', { text: 'Enter HackMD URL' });
+    const { contentEl } = this
+    contentEl.createEl('h2', { text: 'Enter HackMD URL' })
 
     // Create a container for input and button
-    const inputContainer = contentEl.createDiv({ cls: 'hackmd-url-input' });
-    inputContainer.style.display = 'flex';
-    inputContainer.style.gap = '10px';
+    const inputContainer = contentEl.createDiv({ cls: 'hackmd-url-input' })
+    inputContainer.style.display = 'flex'
+    inputContainer.style.gap = '10px'
 
-    this.input = new TextComponent(inputContainer);
-    this.input.inputEl.style.flex = '1';
+    this.input = new TextComponent(inputContainer)
+    this.input.inputEl.style.flex = '1'
 
-    const button = inputContainer.createEl('button', { text: 'Submit' });
+    const button = inputContainer.createEl('button', { text: 'Submit' })
 
     this.input.inputEl.addEventListener('keydown', async event => {
       if (event.key === 'Enter') {
-        await this.onSubmit(this.input.getValue());
-        this.close();
+        await this.onSubmit(this.input.getValue())
+        this.close()
       }
-    });
+    })
 
     button.addEventListener('click', async () => {
-      await this.onSubmit(this.input.getValue());
-      this.close();
-    });
+      await this.onSubmit(this.input.getValue())
+      this.close()
+    })
   }
 }
 
@@ -208,7 +208,7 @@ export const ModalFactory = {
     title: string,
     message: string,
     onConfirm: () => Promise<void>,
-    options: Partial<ModalConfig> = {}
+    options: Partial<ModalConfig> = {},
   ): ConfirmModal {
     return new ConfirmModal(
       app,
@@ -217,8 +217,8 @@ export const ModalFactory = {
         message,
         ...options,
       },
-      onConfirm
-    );
+      onConfirm,
+    )
   },
 
   /**
@@ -227,9 +227,9 @@ export const ModalFactory = {
   createDeleteModal(
     app: App,
     noteTitle: string,
-    onConfirm: () => Promise<void>
+    onConfirm: () => Promise<void>,
   ): DeleteConfirmModal {
-    return new DeleteConfirmModal(app, noteTitle, onConfirm);
+    return new DeleteConfirmModal(app, noteTitle, onConfirm)
   },
 
   /**
@@ -237,8 +237,8 @@ export const ModalFactory = {
    */
   createUrlPromptModal(
     app: App,
-    onSubmit: (value: string | null) => Promise<void>
+    onSubmit: (value: string | null) => Promise<void>,
   ): UrlPromptModal {
-    return new UrlPromptModal(app, onSubmit);
+    return new UrlPromptModal(app, onSubmit)
   },
-};
+}

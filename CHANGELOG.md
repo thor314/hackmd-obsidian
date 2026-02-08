@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+## [2.0.2]
+
+- Use Node.js 24 in CI
+- Update Prettier config to remove semicolons
+
 ## [2.0.1]
 
 Fix the release workflow.

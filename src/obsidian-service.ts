@@ -5,14 +5,14 @@ import {
   Editor,
   parseYaml,
   stringifyYaml,
-} from 'obsidian';
+} from 'obsidian'
 
 /**
  * Abstraction for Obsidian's Editor
  */
 export interface IEditor {
-  getValue(): string;
-  setValue(content: string): void;
+  getValue(): string
+  setValue(content: string): void
 }
 
 /**
@@ -24,25 +24,25 @@ export interface IObsidianService {
    * Make a request to a URL using Obsidian's requestUrl
    * @param options Request options
    */
-  requestUrl(request: RequestUrlParam | string): RequestUrlResponsePromise;
+  requestUrl(request: RequestUrlParam | string): RequestUrlResponsePromise
 
   /**
    * Parse YAML string to object
    * @param yaml YAML string to parse
    */
-  parseYaml(yaml: string): any;
+  parseYaml(yaml: string): any
 
   /**
    * Convert object to YAML string
    * @param object Object to convert to YAML
    */
-  stringifyYaml(object: any): string;
+  stringifyYaml(object: any): string
 
   /**
    * Create an IEditor wrapper for Obsidian Editor
    * @param editor Obsidian Editor to wrap
    */
-  createEditorAdapter(editor: Editor): IEditor;
+  createEditorAdapter(editor: Editor): IEditor
 }
 
 /**
@@ -54,9 +54,9 @@ export class ObsidianService implements IObsidianService {
    * @param options Request options
    */
   public requestUrl(
-    request: RequestUrlParam | string
+    request: RequestUrlParam | string,
   ): RequestUrlResponsePromise {
-    return requestUrl(request);
+    return requestUrl(request)
   }
 
   /**
@@ -64,7 +64,7 @@ export class ObsidianService implements IObsidianService {
    * @param yaml YAML string to parse
    */
   public parseYaml(yaml: string): any {
-    return parseYaml(yaml);
+    return parseYaml(yaml)
   }
 
   /**
@@ -72,7 +72,7 @@ export class ObsidianService implements IObsidianService {
    * @param object Object to convert to YAML
    */
   public stringifyYaml(object: any): string {
-    return stringifyYaml(object);
+    return stringifyYaml(object)
   }
 
   /**
@@ -83,6 +83,6 @@ export class ObsidianService implements IObsidianService {
     return {
       getValue: () => editor.getValue(),
       setValue: (content: string) => editor.setValue(content),
-    };
+    }
   }
 }

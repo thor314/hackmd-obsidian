@@ -1,93 +1,91 @@
 import {
   NotePermissionRole,
   CommentPermissionType,
-} from '@hackmd/api/dist/type';
-import { IEditor } from './obsidian-service';
+} from '@hackmd/api/dist/type'
+import { IEditor } from './obsidian-service'
 
 // HackMD metadata stored in note frontmatter
 export interface HackMDMetadata {
-  url: string;
-  title: string;
-  lastSync: string;
-  teamPath?: string;
+  url: string
+  title: string
+  lastSync: string
+  teamPath?: string
 }
 
 // Note frontmatter structure
 export interface NoteFrontmatter extends Partial<HackMDMetadata> {
-  [key: string]: any;
+  [key: string]: any
 }
 
 export interface SyncPrepareResult {
-  content: string;
-  frontmatter: NoteFrontmatter | null;
-  noteId: string | undefined;
+  content: string
+  frontmatter: NoteFrontmatter | null
+  noteId: string | undefined
 }
 
 export interface UpdateLocalNoteParams {
-  editor: IEditor;
-  content?: string;
-  metadata: Partial<HackMDMetadata>;
+  editor: IEditor
+  content?: string
+  metadata: Partial<HackMDMetadata>
 }
 
 // Response types for HackMD API - simplified to what we use
 export interface HackMDNote {
-  id: string;
-  title: string;
-  content: string;
-  createdAt: string;
-  lastChangedAt?: string;
-  teamPath?: string;
+  id: string
+  title: string
+  content: string
+  createdAt: string
+  lastChangedAt?: string
+  teamPath?: string
 }
 
 export interface HackMDUser {
-  id: string;
-  name: string;
-  userPath: string;
+  id: string
+  name: string
+  userPath: string
 }
 
 export interface HackMDResponse {
-  status: number;
-  ok: boolean;
-  data: HackMDNote | HackMDUser | null;
+  status: number
+  ok: boolean
+  data: HackMDNote | HackMDUser | null
 }
 
 // Only the options we actually send to the API
 export interface NoteOptions {
-  title?: string;
-  content?: string;
-  readPermission?: NotePermissionRole;
-  writePermission?: NotePermissionRole;
-  commentPermission?: CommentPermissionType;
+  title?: string
+  content?: string
+  readPermission?: NotePermissionRole
+  writePermission?: NotePermissionRole
+  commentPermission?: CommentPermissionType
 }
 
 // Plugin settings
 export interface HackMDPluginSettings {
-  accessToken: string;
-  defaultReadPermission: NotePermissionRole;
-  defaultWritePermission: NotePermissionRole;
-  defaultCommentPermission: CommentPermissionType;
+  accessToken: string
+  defaultReadPermission: NotePermissionRole
+  defaultWritePermission: NotePermissionRole
+  defaultCommentPermission: CommentPermissionType
 }
 
 // Modal configuration
 export interface ModalConfig {
-  title: string;
-  message: string;
-  confirmText?: string;
-  cancelText?: string;
-  warning?: boolean;
+  title: string
+  message: string
+  confirmText?: string
+  cancelText?: string
+  warning?: boolean
 }
 
 // Type guards
-export function isHackMDMetadata(
-  value: unknown
-): value is HackMDMetadata {
+export function isHackMDMetadata(value: unknown): value is HackMDMetadata {
   return (
     value != null &&
     typeof value === 'object' &&
     'url' in value &&
     'title' in value &&
     'lastSync' in value
-  );
+  )
 }
 
 export function isHackMDUser(data: unknown): data is HackMDUser {
@@ -97,11 +95,11 @@ export function isHackMDUser(data: unknown): data is HackMDUser {
     'id' in data &&
     'name' in data &&
     'userPath' in data
-  );
+  )
 }
 
 export function hasFrontmatter(content: string): boolean {
-  return content.startsWith('---\n');
+  return content.startsWith('---\n')
 }
 
 // Error types - User-oriented error messages directly embedded in enum values
@@ -141,23 +139,23 @@ export enum HackMDErrorType {
 }
 
 export class HackMDError extends Error {
-  public type: HackMDErrorType;
-  public statusCode?: number;
-  public originalError?: any;
+  public type: HackMDErrorType
+  public statusCode?: number
+  public originalError?: any
 
   constructor(
     type: HackMDErrorType = HackMDErrorType.UNKNOWN,
     message?: string,
     statusCode?: number,
-    originalError?: any
+    originalError?: any,
   ) {
     // Use provided message or the message embedded in the enum
-    super(message || type);
+    super(message || type)
 
-    this.type = type;
-    this.statusCode = statusCode;
-    this.originalError = originalError;
-    this.name = 'HackMDError';
+    this.type = type
+    this.statusCode = statusCode
+    this.originalError = originalError
+    this.name = 'HackMDError'
   }
 }
 
@@ -166,7 +164,7 @@ export const CONSTANTS = {
   MIN_SYNC_INTERVAL: 1000,
   DEFAULT_TIMEOUT: 10000,
   MAX_RETRIES: 3,
-} as const;
+} as const
 
-export type SyncDirection = 'push' | 'pull';
-export type SyncMode = 'normal' | 'force';
+export type SyncDirection = 'push' | 'pull'
+export type SyncMode = 'normal' | 'force'

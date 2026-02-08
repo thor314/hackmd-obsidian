@@ -1,5 +1,5 @@
-import { IEditor, IObsidianService } from '../../src/obsidian-service';
-import { vi } from 'vitest';
+import { IEditor, IObsidianService } from '../../src/obsidian-service'
+import { vi } from 'vitest'
 
 /**
  * Mock of IObsidianService for tests
@@ -7,10 +7,10 @@ import { vi } from 'vitest';
  */
 export class MockObsidianService implements IObsidianService {
   // Create spies for all methods
-  requestUrl = vi.fn();
-  parseYaml = vi.fn();
-  stringifyYaml = vi.fn();
-  createEditorAdapter = vi.fn();
+  requestUrl = vi.fn()
+  parseYaml = vi.fn()
+  stringifyYaml = vi.fn()
+  createEditorAdapter = vi.fn()
 
   /**
    * Default response configuration
@@ -19,17 +19,17 @@ export class MockObsidianService implements IObsidianService {
     // Default mock for parseYaml
     this.parseYaml.mockImplementation((yaml: string) => {
       try {
-        return JSON.parse(yaml);
+        return JSON.parse(yaml)
       } catch (e) {
-        return {};
+        return {}
       }
-    });
+    })
 
     // Default mock for stringifyYaml
-    this.stringifyYaml.mockImplementation((obj: any) => JSON.stringify(obj));
+    this.stringifyYaml.mockImplementation((obj: any) => JSON.stringify(obj))
 
     // Default mock for createEditorAdapter
-    this.createEditorAdapter.mockImplementation(() => this.createMockEditor());
+    this.createEditorAdapter.mockImplementation(() => this.createMockEditor())
   }
 
   /**
@@ -40,7 +40,7 @@ export class MockObsidianService implements IObsidianService {
     return {
       getValue: vi.fn().mockReturnValue(content),
       setValue: vi.fn(),
-    };
+    }
   }
 
   /**
@@ -51,7 +51,7 @@ export class MockObsidianService implements IObsidianService {
       status: 200,
       json: responseData,
       text: JSON.stringify(responseData),
-    });
+    })
   }
 
   /**
@@ -62,8 +62,8 @@ export class MockObsidianService implements IObsidianService {
     const error = {
       message: message,
       status: status,
-    };
+    }
     // Use mockRejectedValueOnce to make the next call reject with this error
-    this.requestUrl.mockRejectedValueOnce(error);
+    this.requestUrl.mockRejectedValueOnce(error)
   }
 }

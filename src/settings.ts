@@ -1,17 +1,17 @@
-import { App, PluginSettingTab, Setting } from 'obsidian';
+import { App, PluginSettingTab, Setting } from 'obsidian'
 import {
   NotePermissionRole,
   CommentPermissionType,
-} from '@hackmd/api/dist/type';
-import type HackMDPlugin from './main';
-import { HackMDClient } from './client';
+} from '@hackmd/api/dist/type'
+import type HackMDPlugin from './main'
+import { HackMDClient } from './client'
 
 // Plugin settings configuration
 export interface HackMDPluginSettings {
-  accessToken: string;
-  defaultReadPermission: NotePermissionRole;
-  defaultWritePermission: NotePermissionRole;
-  defaultCommentPermission: CommentPermissionType;
+  accessToken: string
+  defaultReadPermission: NotePermissionRole
+  defaultWritePermission: NotePermissionRole
+  defaultCommentPermission: CommentPermissionType
 }
 
 export const DEFAULT_SETTINGS: HackMDPluginSettings = {
@@ -19,46 +19,46 @@ export const DEFAULT_SETTINGS: HackMDPluginSettings = {
   defaultReadPermission: NotePermissionRole.OWNER,
   defaultWritePermission: NotePermissionRole.OWNER,
   defaultCommentPermission: CommentPermissionType.DISABLED,
-};
+}
 
 export class HackMDSettingTab extends PluginSettingTab {
-  private readonly plugin: HackMDPlugin;
+  private readonly plugin: HackMDPlugin
 
   constructor(app: App, plugin: HackMDPlugin) {
-    super(app, plugin);
-    this.plugin = plugin;
+    super(app, plugin)
+    this.plugin = plugin
   }
 
   display(): void {
-    const { containerEl } = this;
-    containerEl.empty();
+    const { containerEl } = this
+    containerEl.empty()
 
-    this.renderAccessTokenSetting();
-    this.renderPermissionSettings();
+    this.renderAccessTokenSetting()
+    this.renderPermissionSettings()
   }
 
   private renderAccessTokenSetting(): void {
     new Setting(this.containerEl)
       .setName('Token')
       .setDesc(
-        'HackMD API access token (from hackmd.io → Settings → API → Create API token)'
+        'HackMD API access token (from hackmd.io → Settings → API → Create API token)',
       )
       .addText(text =>
         text
           .setPlaceholder('Enter your HackMD access token')
           .setValue(this.plugin.settings.accessToken || '')
           .onChange(async value => {
-            this.plugin.settings.accessToken = value;
-            await this.plugin.saveData(this.plugin.settings);
-            HackMDClient.resetInstance();
-          })
-      );
+            this.plugin.settings.accessToken = value
+            await this.plugin.saveData(this.plugin.settings)
+            HackMDClient.resetInstance()
+          }),
+      )
   }
 
   private renderPermissionSettings(): void {
-    this.renderReadPermissionSetting();
-    this.renderWritePermissionSetting();
-    this.renderCommentPermissionSetting();
+    this.renderReadPermissionSetting()
+    this.renderWritePermissionSetting()
+    this.renderCommentPermissionSetting()
   }
 
   private renderReadPermissionSetting(): void {
@@ -75,11 +75,11 @@ export class HackMDSettingTab extends PluginSettingTab {
           ],
           this.plugin.settings.defaultReadPermission,
           async (value: NotePermissionRole) => {
-            this.plugin.settings.defaultReadPermission = value;
-            await this.plugin.saveData(this.plugin.settings);
-          }
-        )
-      );
+            this.plugin.settings.defaultReadPermission = value
+            await this.plugin.saveData(this.plugin.settings)
+          },
+        ),
+      )
   }
 
   private renderWritePermissionSetting(): void {
@@ -96,11 +96,11 @@ export class HackMDSettingTab extends PluginSettingTab {
           ],
           this.plugin.settings.defaultWritePermission,
           async (value: NotePermissionRole) => {
-            this.plugin.settings.defaultWritePermission = value;
-            await this.plugin.saveData(this.plugin.settings);
-          }
-        )
-      );
+            this.plugin.settings.defaultWritePermission = value
+            await this.plugin.saveData(this.plugin.settings)
+          },
+        ),
+      )
   }
 
   private renderCommentPermissionSetting(): void {
@@ -122,11 +122,11 @@ export class HackMDSettingTab extends PluginSettingTab {
           ],
           this.plugin.settings.defaultCommentPermission,
           async (value: CommentPermissionType) => {
-            this.plugin.settings.defaultCommentPermission = value;
-            await this.plugin.saveData(this.plugin.settings);
-          }
-        )
-      );
+            this.plugin.settings.defaultCommentPermission = value
+            await this.plugin.saveData(this.plugin.settings)
+          },
+        ),
+      )
   }
 
   // Configure dropdown with permissions options
@@ -134,12 +134,12 @@ export class HackMDSettingTab extends PluginSettingTab {
     dropdown: any,
     options: Array<{ value: T; label: string }>,
     currentValue: T,
-    onChange: (value: T) => Promise<void>
+    onChange: (value: T) => Promise<void>,
   ) {
     options.forEach(({ value, label }) => {
-      dropdown.addOption(value, label);
-    });
+      dropdown.addOption(value, label)
+    })
 
-    return dropdown.setValue(currentValue).onChange(onChange);
+    return dropdown.setValue(currentValue).onChange(onChange)
   }
 }
