@@ -79,13 +79,25 @@ export interface ModalConfig {
 
 // Type guards
 export function isHackMDMetadata(
-  value: NoteFrontmatter
+  value: unknown
 ): value is HackMDMetadata {
-  return 'url' in value && 'title' in value && 'lastSync' in value;
+  return (
+    value != null &&
+    typeof value === 'object' &&
+    'url' in value &&
+    'title' in value &&
+    'lastSync' in value
+  );
 }
 
-export function isHackMDUser(data: object): data is HackMDUser {
-  return data !== null && 'id' in data && 'name' in data && 'userPath' in data;
+export function isHackMDUser(data: unknown): data is HackMDUser {
+  return (
+    data != null &&
+    typeof data === 'object' &&
+    'id' in data &&
+    'name' in data &&
+    'userPath' in data
+  );
 }
 
 export function hasFrontmatter(content: string): boolean {
