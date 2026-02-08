@@ -6,8 +6,9 @@ import {
   TFile,
   parseYaml,
   stringifyYaml,
+  MarkdownFileInfo,
 } from 'obsidian';
-import { HackMDClient } from './client';
+import { getIdFromUrl, getUrlFromId, HackMDClient } from './client';
 import {
   HackMDPluginSettings,
   DEFAULT_SETTINGS,
@@ -20,21 +21,23 @@ import {
   SyncMode,
   HackMDError,
   HackMDErrorType,
+  HackMDNote,
+  SyncPrepareResult,
+  UpdateLocalNoteParams,
 } from './types';
 
 export default class HackMDPlugin extends Plugin {
   settings: HackMDPluginSettings;
-  private client: HackMDClient | null = null
   private readonly SYNC_TIME_MARGIN = 4000;
 
   async onload() {
-    this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData())
-    this.initializeClient()
-    this.registerCommands()
-    this.addSettingTab(new HackMDSettingTab(this.app, this))
+    this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+    this.registerEditorCommands();
+    this.registerStandaloneCommands();
+    this.addSettingTab(new HackMDSettingTab(this.app, this));
   }
 
-  private registerCommands(): void {
+  private registerEditorCommands(): void {
     const commands = [
       {
         name: 'Push',
@@ -66,22 +69,47 @@ export default class HackMDPlugin extends Plugin {
 
     for (const command of commands) {
       this.addCommand({
-        id: command.name.toLowerCase().replace(' ', '-'),
+        id: command.name.toLowerCase().replace(/ /g, '-'),
         name: command.name,
-        editorCallback: this.createEditorCallback(command.callback),
+        editorCallback: this.createCallback(command.callback, true),
       });
     }
   }
 
-  private createEditorCallback(
-    callback: (editor: Editor, file: TFile) => Promise<void>
+  private registerStandaloneCommands(): void {
+    this.addCommand({
+      id: 'create-note-from-hackmd-url',
+      name: 'Create Note from HackMD URL',
+      callback: () => this.promptAndCreateNote(),
+    });
+  }
+
+  private async promptAndCreateNote(): Promise<void> {
+    const url = await new Promise<string | null>(resolve => {
+      ModalFactory.createUrlPromptModal(this.app, async value => {
+        resolve(value);
+      }).open();
+    });
+
+    if (url) {
+      await this.createNoteFromHackMDUrl(url);
+    }
+  }
+
+  private createCallback<T extends (...args: any[]) => Promise<void>>(
+    callback: T,
+    requiresEditor: boolean
   ) {
-    return async (editor: Editor, view: MarkdownView) => {
+    return async (editor?: Editor, ctx?: MarkdownView | MarkdownFileInfo) => {
       try {
-        if (!view.file) {
-          throw new Error('No active file');
+        if (requiresEditor) {
+          if (!ctx || !(ctx instanceof MarkdownView) || !ctx.file) {
+            throw new Error('This command requires an active markdown file');
+          }
+          await callback(editor, ctx.file);
+        } else {
+          await callback();
         }
-        await callback(editor, view.file);
       } catch (error) {
         console.error('Command failed:', error);
         new Notice(`Operation failed: ${error.message}`);
@@ -89,22 +117,8 @@ export default class HackMDPlugin extends Plugin {
     };
   }
 
-  public initializeClient(): void {
-    if (!this.settings.accessToken) {
-      this.client = null
-      return
-    }
-    this.client = new HackMDClient(this.settings.accessToken)
-  }
-
-  private requireClient(): HackMDClient {
-    if (!this.client) {
-      throw new HackMDError(
-        'HackMD client not initialized. Check your access token in settings.',
-        HackMDErrorType.AUTH_FAILED
-      )
-    }
-    return this.client
+  private async getClient(): Promise<HackMDClient> {
+    return HackMDClient.getInstance(this.settings.accessToken);
   }
 
   private async pushToHackMD(
@@ -112,7 +126,7 @@ export default class HackMDPlugin extends Plugin {
     file: TFile,
     mode: SyncMode = 'normal'
   ): Promise<void> {
-    const client = this.requireClient();
+    const client = await this.getClient();
     const { content, noteId } = await this.prepareSync(editor);
     let result;
 
@@ -126,7 +140,7 @@ export default class HackMDPlugin extends Plugin {
     }
 
     const updatedMetadata: Partial<HackMDMetadata> = {
-      url: `https://hackmd.io/${result.id}`,
+      url: getUrlFromId(result.id),
       title: result.title || file.basename,
       lastSync: new Date().toISOString(),
     };
@@ -148,26 +162,192 @@ export default class HackMDPlugin extends Plugin {
     editor: Editor,
     file: TFile,
     content: string
-  ): Promise<any> {
-    const client = this.requireClient();
+  ): Promise<HackMDNote> {
+    const client = await this.getClient();
+    const { frontmatter } = this.getFrontmatter(content);
 
-    // First ensure the title is in the frontmatter
-    const { frontmatter, content: noteContent } = this.getFrontmatter(content);
     const newFrontmatter: NoteFrontmatter = {
       ...frontmatter,
       title: file.basename,
     };
 
-    // Create the note with proper title in frontmatter
-    const contentWithTitle = this.combine(newFrontmatter, noteContent);
-    const result = await client.createNote({
+    const contentWithTitle = this.combine(newFrontmatter, content);
+    return client.createNote({
       content: contentWithTitle,
       readPermission: this.settings.defaultReadPermission,
       writePermission: this.settings.defaultWritePermission,
       commentPermission: this.settings.defaultCommentPermission,
     });
+  }
 
-    return result;
+  /**
+   * Find a note in the vault with a specific HackMD ID
+   * @param noteId HackMD ID to search for
+   * @returns TFile if found, null otherwise
+   */
+  private findNoteWithHackMDId(noteId: string): TFile | null {
+    // Pre-calculate the exact URL we're looking for
+    const searchUrl = getUrlFromId(noteId);
+    const files = this.app.vault.getMarkdownFiles();
+
+    // Utiliser find pour une recherche plus élégante
+    return (
+      files.find(file => {
+        const cache = this.app.metadataCache.getFileCache(file);
+        return cache?.frontmatter?.url === searchUrl;
+      }) || null
+    );
+  }
+
+  /**
+   * Prepares note content by adding fresh metadata and preserving non-sync frontmatter
+   * @param noteContent The raw content from HackMD
+   * @param noteId The HackMD note ID
+   * @param noteTitle The note title
+   * @param teamPath Optional team path if note belongs to a team
+   * @returns Processed content with appropriate metadata
+   */
+  private prepareNoteContent(
+    noteContent: string,
+    noteId: string,
+    noteTitle: string,
+    teamPath?: string
+  ): string {
+    const { frontmatter } = this.getFrontmatter(noteContent);
+
+    // Always create fresh synchronization metadata for newly imported notes
+    // This ensures we don't inherit potentially problematic metadata from other users
+    const newMetadata: Partial<HackMDMetadata> = {
+      url: getUrlFromId(noteId),
+      title: noteTitle,
+      lastSync: new Date().toISOString(),
+    };
+
+    if (teamPath) {
+      newMetadata.teamPath = teamPath;
+    }
+
+    // Preserve any existing non-sync frontmatter content
+    // But ensure our sync metadata takes precedence
+    const existingNonSyncFrontmatter = { ...frontmatter };
+
+    // Remove any existing sync metadata keys that we'll replace
+    delete existingNonSyncFrontmatter.url;
+    delete existingNonSyncFrontmatter.lastSync;
+    delete existingNonSyncFrontmatter.teamPath;
+
+    // Merge non-sync frontmatter with our fresh sync metadata
+    const newFrontmatter = { ...existingNonSyncFrontmatter, ...newMetadata };
+
+    // Extract content without frontmatter
+    const contentWithoutFrontmatter = frontmatter
+      ? noteContent.slice(this.getFrontmatter(noteContent).position)
+      : noteContent;
+
+    // Rebuild content with new metadata
+    return this.combine(newFrontmatter, contentWithoutFrontmatter);
+  }
+
+  /**
+   * Generates a unique filename to avoid conflicts
+   * @param baseTitle The original title to use as a base
+   * @returns A unique filename that doesn't exist in the vault
+   */
+  private generateUniqueFileName(baseTitle: string): string {
+    let fileName = `${baseTitle}.md`;
+    let filePath = this.app.vault.getAbstractFileByPath(fileName)?.path;
+    let counter = 1;
+
+    while (filePath) {
+      fileName = `${baseTitle} (${counter}).md`;
+      filePath = this.app.vault.getAbstractFileByPath(fileName)?.path;
+      counter++;
+    }
+
+    return fileName;
+  }
+
+  /**
+   * Notifies the user that a note already exists and suggests next steps
+   * @param existingNote The file that already contains this HackMD note
+   */
+  private notifyExistingNote(existingNote: TFile): void {
+    new Notice(
+      `This note already exists at "${existingNote.path}". Open it and use the "Pull" command to update its content.`
+    );
+    // Optionally open the existing note
+    this.app.workspace.getLeaf(true).openFile(existingNote);
+  }
+
+  /**
+   * Shows a notification about note creation
+   * @param fileName The name of the created file
+   */
+  private notifyNoteCreation(fileName: string): void {
+    new Notice(`Note created: ${fileName}`);
+  }
+
+  /**
+   * Handles errors during note creation with appropriate messages
+   * @param error The error that occurred
+   */
+  private handleNoteCreationError(error: HackMDError): void {
+    if (error.type === 'auth_failed') {
+      new Notice('Authentication failed. Please check your access token.');
+    } else if (error.type === 'permission_denied') {
+      new Notice('Permission denied. You do not have access to this note.');
+    } else {
+      console.error('Error creating note:', error);
+      new Notice('Failed to create note from HackMD URL.');
+    }
+  }
+
+  /**
+   * Creates a note from a HackMD URL
+   * @param url The HackMD URL to import
+   * @returns Promise that resolves when the operation is complete
+   */
+  async createNoteFromHackMDUrl(url: string): Promise<void> {
+    const noteId = getIdFromUrl(url);
+
+    if (!noteId) {
+      new Notice('Invalid HackMD URL.');
+      return;
+    }
+
+    // Check if the note already exists
+    const existingNote = this.findNoteWithHackMDId(noteId);
+    if (existingNote) {
+      this.notifyExistingNote(existingNote);
+      return;
+    }
+
+    try {
+      // Get note data
+      const client = await this.getClient();
+      const noteData = await client.getNote(noteId);
+      const noteTitle = noteData.title || 'Untitled';
+      const noteContent = noteData.content || '';
+
+      // Prepare content
+      const finalContent = this.prepareNoteContent(
+        noteContent,
+        noteId,
+        noteTitle,
+        noteData.teamPath
+      );
+
+      // Create note with unique filename
+      const fileName = this.generateUniqueFileName(noteTitle);
+      const newFile = await this.app.vault.create(fileName, finalContent);
+
+      this.app.workspace.getLeaf(true).openFile(newFile);
+
+      // Notify user
+      this.notifyNoteCreation(fileName);
+    } catch (error) {
+      this.handleNoteCreationError(error);
+    }
   }
 
   private async pullFromHackMD(
@@ -175,7 +355,7 @@ export default class HackMDPlugin extends Plugin {
     file: TFile,
     mode: SyncMode = 'normal'
   ): Promise<void> {
-    const client = this.requireClient();
+    const client = await this.getClient();
     const { noteId } = await this.prepareSync(editor);
 
     if (!noteId) {
@@ -187,9 +367,8 @@ export default class HackMDPlugin extends Plugin {
     }
 
     const note = await client.getNote(noteId);
-
     const updatedMetadata: Partial<HackMDMetadata> = {
-      url: `https://hackmd.io/${note.id}`,
+      url: getUrlFromId(note.id),
       title: note.title || file.basename,
       lastSync: new Date().toISOString(),
     };
@@ -214,17 +393,14 @@ export default class HackMDPlugin extends Plugin {
       throw new Error('This file has not been pushed to HackMD yet.');
     }
 
-    await navigator.clipboard.writeText(`https://hackmd.io/${noteId}`);
+    await navigator.clipboard.writeText(getUrlFromId(noteId));
     new Notice('HackMD URL copied to clipboard!');
   }
 
   private async deleteHackMDNote(editor: Editor, file: TFile): Promise<void> {
-    const client = this.requireClient();
-
+    const client = await this.getClient();
     const { frontmatter } = await this.prepareSync(editor);
-    const noteId = frontmatter?.url
-      ? client.getIdFromUrl(frontmatter.url)
-      : null;
+    const noteId = frontmatter?.url ? getIdFromUrl(frontmatter.url) : null;
 
     if (!noteId) {
       throw new Error('This file is not linked to a HackMD note.');
@@ -248,13 +424,11 @@ export default class HackMDPlugin extends Plugin {
     frontmatter: NoteFrontmatter | null;
     noteId: string | null;
   }> {
-    const client = this.requireClient();
+    const client = this.getClient();
     if (!editor) throw new Error('Editor not found');
     const content = editor.getValue();
     const { frontmatter } = this.getFrontmatter(content);
-    const noteId = frontmatter?.url
-      ? client.getIdFromUrl(frontmatter.url)
-      : null;
+    const noteId = frontmatter?.url ? getIdFromUrl(frontmatter.url) : null;
     return { content, frontmatter, noteId };
   }
 
@@ -267,7 +441,6 @@ export default class HackMDPlugin extends Plugin {
     if (!fmMatch) {
       return { frontmatter: null, content, position: 0 };
     }
-
     try {
       const frontmatter = parseYaml(fmMatch[1]);
       const position = fmMatch[0].length;
@@ -280,8 +453,7 @@ export default class HackMDPlugin extends Plugin {
   }
 
   private async checkPushConflicts(file: TFile, noteId: string): Promise<void> {
-    const client = this.requireClient();
-
+    const client = await this.getClient();
     const note = await client.getNote(noteId);
     const content = await this.app.vault.read(file);
     const { frontmatter } = this.getFrontmatter(content);
@@ -330,11 +502,7 @@ export default class HackMDPlugin extends Plugin {
     }
   }
 
-  private async updateLocalNote(params: {
-    editor: Editor;
-    content?: string;
-    metadata: Partial<HackMDMetadata>;
-  }): Promise<void> {
+  private async updateLocalNote(params: UpdateLocalNoteParams): Promise<void> {
     const { editor, metadata } = params;
     const baseContent = params.content ?? editor.getValue();
     const { frontmatter, content: noteContent } =

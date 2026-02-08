@@ -1,4 +1,4 @@
-import { TFile } from 'obsidian';
+import { Editor } from 'obsidian';
 import {
   NotePermissionRole,
   CommentPermissionType,
@@ -13,19 +13,45 @@ export interface HackMDMetadata {
 }
 
 // Note frontmatter structure
-export interface NoteFrontmatter {
-  hackmd?: HackMDMetadata;
+export interface NoteFrontmatter extends Partial<HackMDMetadata> {
   [key: string]: any;
 }
 
-// HackMD API response
-export interface HackMDResponse {
-  status: number;
-  data: any;
-  ok: boolean;
+export interface SyncPrepareResult {
+  content: string;
+  frontmatter: NoteFrontmatter | null;
+  noteId: string | null;
 }
 
-// Note creation/update options
+export interface UpdateLocalNoteParams {
+  editor: Editor;
+  content?: string;
+  metadata: Partial<HackMDMetadata>;
+}
+
+// Response types for HackMD API - simplified to what we use
+export interface HackMDNote {
+  id: string;
+  title: string;
+  content: string;
+  createdAt: string;
+  lastChangedAt?: string;
+  teamPath?: string;
+}
+
+export interface HackMDUser {
+  id: string;
+  name: string;
+  userPath: string;
+}
+
+export interface HackMDResponse {
+  status: number;
+  ok: boolean;
+  data: HackMDNote | HackMDUser | null;
+}
+
+// Only the options we actually send to the API
 export interface NoteOptions {
   title?: string;
   content?: string;
@@ -40,18 +66,6 @@ export interface HackMDPluginSettings {
   defaultReadPermission: NotePermissionRole;
   defaultWritePermission: NotePermissionRole;
   defaultCommentPermission: CommentPermissionType;
-  noteIdMap: Record<string, string>;
-  lastSyncTimestamps: Record<string, number>;
-}
-
-// Sync state between local and remote notes
-export interface SyncState {
-  file: TFile;
-  localModTime: number;
-  remoteModTime: number;
-  lastSyncTime: number;
-  contentChanged: boolean;
-  metadataChanged: boolean;
 }
 
 // Modal configuration
@@ -64,14 +78,14 @@ export interface ModalConfig {
 }
 
 // Type guards
-export function isHackMDMetadata(value: any): value is HackMDMetadata {
-  return (
-    value &&
-    typeof value === 'object' &&
-    'url' in value &&
-    'title' in value &&
-    'lastSync' in value
-  );
+export function isHackMDMetadata(
+  value: NoteFrontmatter
+): value is HackMDMetadata {
+  return 'url' in value && 'title' in value && 'lastSync' in value;
+}
+
+export function isHackMDUser(data: object): data is HackMDUser {
+  return data !== null && 'id' in data && 'name' in data && 'userPath' in data;
 }
 
 export function hasFrontmatter(content: string): boolean {
@@ -139,13 +153,6 @@ export const CONSTANTS = {
   DEFAULT_TIMEOUT: 10000,
   MAX_RETRIES: 3,
 } as const;
-
-// Utility types
-export type AsyncResult<T> = Promise<{
-  success: boolean;
-  data?: T;
-  error?: HackMDError;
-}>;
 
 export type SyncDirection = 'push' | 'pull';
 export type SyncMode = 'normal' | 'force';
