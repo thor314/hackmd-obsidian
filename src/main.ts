@@ -29,7 +29,7 @@ export default class HackMDPlugin extends Plugin {
 
   async onload() {
     this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
-    this.resetClient();
+    this.ensureClientInitialized();
     this.registerCommands();
     this.addSettingTab(new HackMDSettingTab(this.app, this));
   }
@@ -89,7 +89,7 @@ export default class HackMDPlugin extends Plugin {
     };
   }
 
-  public async resetClient(): Promise<void> {
+  public async ensureClientInitialized(): Promise<void> {
     try {
       if (!this.settings.accessToken) throw new Error();
       this.client = new HackMDClient(this.settings.accessToken);
@@ -104,7 +104,7 @@ export default class HackMDPlugin extends Plugin {
 
   public async getClient(): Promise<HackMDClient> {
     if (!this.client) {
-      await this.resetClient();
+      await this.ensureClientInitialized();
     }
     return this.client;
   }
