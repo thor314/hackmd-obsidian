@@ -520,7 +520,6 @@ export default class HackMDPlugin extends Plugin {
         : noteContent;
 
     editor.setValue(updatedContent);
-    await this.saveData(this.settings);
   }
 
   private async cleanupHackMDMetadata(editor: Editor): Promise<void> {
