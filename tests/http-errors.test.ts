@@ -7,7 +7,6 @@ describe('HackMDClient Error Handling', () => {
   // Avant chaque test, nous allons réinitialiser l'instance singleton pour éviter la contamination entre tests
   beforeEach(() => {
     // Force reset of client instance to avoid test pollution
-    // @ts-ignore - Access static method even if private
     HackMDClient.resetInstance();
     vi.resetAllMocks();
   });
