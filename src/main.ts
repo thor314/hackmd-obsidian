@@ -499,7 +499,7 @@ export default class HackMDPlugin extends Plugin {
       this.getFrontmatter(baseContent);
 
     const newFrontmatter: NoteFrontmatter = {
-      ...frontmatter,
+      ...(frontmatter ?? {}),
       ...metadata,
     };
 
