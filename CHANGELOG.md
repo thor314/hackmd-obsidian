@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [2.0.1]
+
+Fix the release workflow.
+
 ## [2.0.0]
 
 🎉 **Plugin Revival** - New maintainer and major improvements to sync reliability and workflow.
