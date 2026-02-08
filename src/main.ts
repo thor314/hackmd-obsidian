@@ -419,7 +419,12 @@ export default class HackMDPlugin extends Plugin {
     modal.open();
   }
 
-  private async prepareSync(editor: Editor): Promise<SyncPrepareResult> {
+  private async prepareSync(editor: Editor): Promise<{
+    content: string;
+    frontmatter: NoteFrontmatter | null;
+    noteId: string | null;
+  }> {
+    const client = this.getClient();
     if (!editor) throw new Error('Editor not found');
     const content = editor.getValue();
     const { frontmatter } = this.getFrontmatter(content);
@@ -466,7 +471,7 @@ export default class HackMDPlugin extends Plugin {
       note.lastChangedAt || note.createdAt
     ).getTime();
 
-    if (lastSyncTime - remoteModTime > this.SYNC_TIME_MARGIN) {
+    if (remoteModTime - lastSyncTime > this.SYNC_TIME_MARGIN) {
       throw new HackMDError(
         'Remote note has been modified since last push. Pull change or use Force Push to overwrite.',
         HackMDErrorType.SYNC_CONFLICT
