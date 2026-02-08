@@ -76,6 +76,7 @@ export class HackMDSettingTab extends PluginSettingTab {
           this.plugin.settings.defaultReadPermission,
           async (value: NotePermissionRole) => {
             this.plugin.settings.defaultReadPermission = value;
+            await this.plugin.saveData(this.plugin.settings);
           }
         )
       );
