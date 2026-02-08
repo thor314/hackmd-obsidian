@@ -28,13 +28,13 @@ abstract class BaseModal extends Modal {
     const { contentEl } = this;
 
     // Title
-    contentEl.createEl("h3", { text: title });
+    contentEl.createEl('h3', { text: title });
 
     // Message
-    contentEl.createEl("p", { text: message });
+    contentEl.createEl('p', { text: message });
 
     // Buttons container with styling
-    buttonsContainer.addClass("modal-button-container");
+    buttonsContainer.addClass('modal-button-container');
   }
 
   /**
@@ -46,9 +46,9 @@ abstract class BaseModal extends Modal {
     handler: () => void | Promise<void>,
     warning: boolean = false
   ): HTMLButtonElement {
-    const button = container.createEl("button", { text });
-    if (warning) button.addClass("mod-warning");
-    button.addEventListener("click", async () => {
+    const button = container.createEl('button', { text });
+    if (warning) button.addClass('mod-warning');
+    button.addEventListener('click', async () => {
       if (this.loading) return;
       await this.handleButtonClick(button, handler);
     });
@@ -65,7 +65,7 @@ abstract class BaseModal extends Modal {
     const originalText = button.getText();
     try {
       this.setLoading(true);
-      button.setText("Processing...");
+      button.setText('Processing...');
       await handler();
     } finally {
       this.setLoading(false);
@@ -78,7 +78,7 @@ abstract class BaseModal extends Modal {
    */
   protected setLoading(loading: boolean): void {
     this.loading = loading;
-    this.contentEl.findAll("button").forEach(button => {
+    this.contentEl.findAll('button').forEach(button => {
       if (loading) {
         button.setAttr('disabled', 'true');
       } else {
@@ -117,14 +117,14 @@ export class ConfirmModal extends BaseModal {
     // Cancel button
     this.createButton(
       buttonsContainer,
-      this.config.cancelText || "Cancel",
+      this.config.cancelText || 'Cancel',
       () => this.close()
     );
 
     // Confirm button
     this.createButton(
       buttonsContainer,
-      this.config.confirmText || "Confirm",
+      this.config.confirmText || 'Confirm',
       async () => {
         try {
           await this.onConfirm();
@@ -149,11 +149,12 @@ export class DeleteConfirmModal extends ConfirmModal {
     super(
       app,
       {
-        title: "Delete HackMD note",
-        message: `Are you sure you want to delete the HackMD note for "${noteTitle}"? ` +
+        title: 'Delete HackMD note',
+        message:
+          `Are you sure you want to delete the HackMD note for "${noteTitle}"? ` +
           `This will remove the note from HackMD and remove all HackMD metadata from the local file.`,
-        confirmText: "Delete",
-        warning: true
+        confirmText: 'Delete',
+        warning: true,
       },
       onConfirm
     );
@@ -179,7 +180,7 @@ export const ModalFactory = {
       {
         title,
         message,
-        ...options
+        ...options,
       },
       onConfirm
     );
@@ -194,5 +195,5 @@ export const ModalFactory = {
     onConfirm: () => Promise<void>
   ): DeleteConfirmModal {
     return new DeleteConfirmModal(app, noteTitle, onConfirm);
-  }
+  },
 };
