@@ -24,14 +24,14 @@ import {
 
 export default class HackMDPlugin extends Plugin {
   settings: HackMDPluginSettings;
-  private client: HackMDClient;
+  private client: HackMDClient | null = null
   private readonly SYNC_TIME_MARGIN = 4000;
 
   async onload() {
-    this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
-    this.ensureClientInitialized();
-    this.registerCommands();
-    this.addSettingTab(new HackMDSettingTab(this.app, this));
+    this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData())
+    this.initializeClient()
+    this.registerCommands()
+    this.addSettingTab(new HackMDSettingTab(this.app, this))
   }
 
   private registerCommands(): void {
@@ -89,24 +89,22 @@ export default class HackMDPlugin extends Plugin {
     };
   }
 
-  public async ensureClientInitialized(): Promise<void> {
-    try {
-      if (!this.settings.accessToken) throw new Error();
-      this.client = new HackMDClient(this.settings.accessToken);
-      await this.client.getMe();
-    } catch (error) {
-      throw new HackMDError(
-        'Failed to initialize HackMD client. Check your access token.',
-        HackMDErrorType.AUTH_FAILED
-      );
+  public initializeClient(): void {
+    if (!this.settings.accessToken) {
+      this.client = null
+      return
     }
+    this.client = new HackMDClient(this.settings.accessToken)
   }
 
-  async getClient(): Promise<HackMDClient> {
+  private requireClient(): HackMDClient {
     if (!this.client) {
-      await this.ensureClientInitialized();
+      throw new HackMDError(
+        'HackMD client not initialized. Check your access token in settings.',
+        HackMDErrorType.AUTH_FAILED
+      )
     }
-    return this.client;
+    return this.client
   }
 
   private async pushToHackMD(
@@ -114,7 +112,7 @@ export default class HackMDPlugin extends Plugin {
     file: TFile,
     mode: SyncMode = 'normal'
   ): Promise<void> {
-    const client = await this.getClient();
+    const client = this.requireClient();
     const { content, noteId } = await this.prepareSync(editor);
     let result;
 
@@ -151,7 +149,7 @@ export default class HackMDPlugin extends Plugin {
     file: TFile,
     content: string
   ): Promise<any> {
-    const client = await this.getClient();
+    const client = this.requireClient();
 
     // First ensure the title is in the frontmatter
     const { frontmatter, content: noteContent } = this.getFrontmatter(content);
@@ -177,7 +175,7 @@ export default class HackMDPlugin extends Plugin {
     file: TFile,
     mode: SyncMode = 'normal'
   ): Promise<void> {
-    const client = await this.getClient();
+    const client = this.requireClient();
     const { noteId } = await this.prepareSync(editor);
 
     if (!noteId) {
@@ -221,7 +219,7 @@ export default class HackMDPlugin extends Plugin {
   }
 
   private async deleteHackMDNote(editor: Editor, file: TFile): Promise<void> {
-    const client = await this.getClient();
+    const client = this.requireClient();
 
     const { frontmatter } = await this.prepareSync(editor);
     const noteId = frontmatter?.url
@@ -250,7 +248,7 @@ export default class HackMDPlugin extends Plugin {
     frontmatter: NoteFrontmatter | null;
     noteId: string | null;
   }> {
-    const client = await this.getClient();
+    const client = this.requireClient();
     if (!editor) throw new Error('Editor not found');
     const content = editor.getValue();
     const { frontmatter } = this.getFrontmatter(content);
@@ -282,7 +280,7 @@ export default class HackMDPlugin extends Plugin {
   }
 
   private async checkPushConflicts(file: TFile, noteId: string): Promise<void> {
-    const client = await this.getClient();
+    const client = this.requireClient();
 
     const note = await client.getNote(noteId);
     const content = await this.app.vault.read(file);
