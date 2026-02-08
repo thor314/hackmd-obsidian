@@ -24,7 +24,7 @@ import {
 
 export default class HackMDPlugin extends Plugin {
   settings: HackMDPluginSettings;
-  private client!: HackMDClient;
+  private client?: HackMDClient;
   private readonly SYNC_TIME_MARGIN = 4000;
 
   async onload() {
