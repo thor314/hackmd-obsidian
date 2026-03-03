@@ -172,14 +172,14 @@ export default class HackMDPlugin extends Plugin {
     content: string,
   ): Promise<HackMDNote> {
     const client = await this.getClient()
-    const { frontmatter } = this.getFrontmatter(content)
+    const { frontmatter, content: noteContent } = this.getFrontmatter(content)
 
     const newFrontmatter: NoteFrontmatter = {
       ...frontmatter,
       title: file.basename,
     }
 
-    const contentWithTitle = this.combine(newFrontmatter, content)
+    const contentWithTitle = this.combine(newFrontmatter, noteContent)
     return client.createNote({
       content: contentWithTitle,
       readPermission: this.settings.defaultReadPermission,
