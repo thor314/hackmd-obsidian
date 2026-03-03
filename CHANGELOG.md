@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [2.0.3]
+
+- fix: prevent frontmatter being written twice on initial push
+
 ## [2.0.2]
 
 - Use Node.js 24 in CI
